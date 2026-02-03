@@ -1,5 +1,0 @@
-DB_USER=admin
-DB_PASSWORD=$R3h@t555
-DB_NAME=realstatedb
-DB_PORT=5432
-API_PORT=8080

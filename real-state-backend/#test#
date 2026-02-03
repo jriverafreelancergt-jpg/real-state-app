@@ -1,0 +1,15 @@
+curl -X POST http://localhost:8080/login \
+  -H "Content-Type: application/json" \
+  -H "X-Device-Fingerprint: mobile-device-123" \
+  -d '{
+    "username": "admin",
+    "password": "admin123"
+  }'File Edit Options Buffers Tools Help
+curl -X POST http://localhost:8080/login \
+  -H "Content-Type: application/json" \
+  -H "X-Device-Fingerprint: mobile-device-123" \
+  -d '{
+    "username": "admin",
+    "password": "admin123"
+  }'
+

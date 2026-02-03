@@ -1,19 +1,34 @@
+version: '3.8'
+
 services:
   api:
-    build: ./real-state-backend
-    container_name: realstate_project_api
-    restart: always
+    # 1. CORRECCIÓN: El punto (.) indica que el Dockerfile está en el mismo directorio
+    build: . 
+    container_name: real-state-backend
+    restart: unless-stopped
     ports:
       - "8080:8080"
+    
+    # 2. OPTIMIZACIÓN: Cargar variables desde un archivo .env es más limpio y seguro
+    env_file:
+      - .env
+    
     environment:
-      # IMPORTANTE: Aquí usamos el nombre del contenedor que YA TIENES arriba
-      # Si tu contenedor de Postgres se llama 'postgres_server_realstate'
-      DB_URL: "postgres://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}?sslmode=disable"      
+      # Sobrescribimos o definimos variables críticas aquí si es necesario
+      GO_ENV: development
+      # IMPORTANTE: El host (@nombre_del_contenedor) debe coincidir con el nombre
+      # del contenedor de tu DB en la red externa.
+      # Si tu contenedor de DB se llama 'postgres_server', cambia '@db' por '@postgres_server'
+      DATABASE_URL: "postgres://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:5432/${DB_NAME}?sslmode=disable"
+    
+    # 3. VOLÚMENES: Para desarrollo. Mapea tu código local al contenedor.
     volumes:
-      - ./real-state-backend:/app
+      - .:/app
+    
     networks:
       - realstate_network
 
+# Definición de la red externa
 networks:
   realstate_network:
-    external: true # Esto le dice a Docker que use una red que ya existe
+   driver: bridge 
