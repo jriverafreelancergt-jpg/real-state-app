@@ -39,6 +39,27 @@ type UserInfo struct {
 	Email    string `json:"email"`
 }
 
+// LoginResponseData representa los datos de la respuesta de login
+type LoginResponseData struct {
+	User           UserInfo         `json:"user"`
+	Authentication LoginResponseDTO `json:"authentication"`
+}
+
+// ResponseMeta contiene metadatos de la respuesta
+type ResponseMeta struct {
+	ServerTime string `json:"server_time"`
+	RequestID  string `json:"request_id"`
+}
+
+// LoginResponseWrapper es la estructura de respuesta completa para login
+type LoginResponseWrapper struct {
+	Status  string            `json:"status"`
+	Code    int               `json:"code"`
+	Message string            `json:"message"`
+	Data    LoginResponseData `json:"data"`
+	Meta    ResponseMeta      `json:"meta"`
+}
+
 // TokenResponseDTO para refresh token
 type TokenResponseDTO struct {
 	AccessToken string `json:"access_token"`

@@ -5,6 +5,9 @@ import (
 	"net/http"
 	"real-state-backend/internal/core/ports"
 	"real-state-backend/internal/dto"
+	"time"
+
+	"github.com/google/uuid"
 )
 
 type AuthHandler struct {
@@ -57,9 +60,34 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Responder con tokens
+	// Construir respuesta con envoltorio (status, meta, request id)
+	requestID := "req_auth_" + uuid.New().String()
+	serverTime := time.Now().UTC().Format(time.RFC3339)
+
+	wrapper := dto.LoginResponseWrapper{
+		Status:  "success",
+		Code:    http.StatusOK,
+		Message: "Autenticación completada con éxito",
+		Data: dto.LoginResponseData{
+			User: resp.User,
+			Authentication: dto.LoginResponseDTO{
+				AccessToken:  resp.AccessToken,
+				RefreshToken: resp.RefreshToken,
+				TokenType:    resp.TokenType,
+				ExpiresIn:    resp.ExpiresIn,
+				MFARequired:  resp.MFARequired,
+			},
+		},
+		Meta: dto.ResponseMeta{
+			ServerTime: serverTime,
+			RequestID:  requestID,
+		},
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	w.Header().Set("X-Request-ID", requestID)
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(wrapper)
 }
 
 // VerifyMFA maneja verificación de MFA
