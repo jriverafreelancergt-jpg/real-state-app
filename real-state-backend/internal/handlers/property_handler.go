@@ -30,9 +30,7 @@ func (h *PropertyHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 
 	properties, err := h.service.ListProperties(r.Context(), page, 10)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Error al listar propiedades"})
+		writeError(w, http.StatusInternalServerError, "Error al listar propiedades", "list_properties_error", "property", nil)
 		return
 	}
 
@@ -46,14 +44,13 @@ func (h *PropertyHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	idStr := r.PathValue("id") // Go 1.22 feature
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
-		http.Error(w, "ID inválido", http.StatusBadRequest)
+		writeError(w, http.StatusBadRequest, "ID inválido", "invalid_id", "property", nil)
 		return
 	}
 
 	property, err := h.service.GetProperty(r.Context(), id)
 	if err != nil {
-		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Propiedad no encontrada"})
+		writeError(w, http.StatusNotFound, "Propiedad no encontrada", "property_not_found", "property", nil)
 		return
 	}
 
@@ -65,15 +62,13 @@ func (h *PropertyHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 func (h *PropertyHandler) CreateProperty(w http.ResponseWriter, r *http.Request) {
 	var input dto.CreatePropertyDTO
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		writeError(w, http.StatusBadRequest, "Invalid JSON", "invalid_json", "property", nil)
 		return
 	}
 
 	// Usar Validate() en lugar de IsValid()
 	if err := input.Validate(); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnprocessableEntity)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		writeError(w, http.StatusUnprocessableEntity, err.Error(), "validation_error", "property", nil)
 		return
 	}
 
@@ -90,7 +85,7 @@ func (h *PropertyHandler) CreateProperty(w http.ResponseWriter, r *http.Request)
 
 	if err := h.service.CreateProperty(r.Context(), property); err != nil {
 		slog.Error("Error creating property", "error", err)
-		http.Error(w, "Error de base de datos", http.StatusInternalServerError)
+		writeError(w, http.StatusInternalServerError, "Error de base de datos", "db_error", "property", nil)
 		return
 	}
 

@@ -24,17 +24,13 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	// Decodificar JSON
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid JSON"})
+		writeError(w, http.StatusBadRequest, "Invalid JSON", "invalid_json", "auth", nil)
 		return
 	}
 
 	// Validar DTO
 	if err := req.Validate(); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		writeError(w, http.StatusBadRequest, err.Error(), "validation_error", "auth", nil)
 		return
 	}
 
@@ -54,9 +50,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	// Llamar al servicio
 	resp, err := h.service.Login(r.Context(), req, deviceFingerprint, locationData, userAgent, deviceMetadata)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		writeError(w, http.StatusUnauthorized, err.Error(), "invalid_credentials", "auth", nil)
 		return
 	}
 
@@ -95,13 +89,13 @@ func (h *AuthHandler) VerifyMFA(w http.ResponseWriter, r *http.Request) {
 	userID := r.Context().Value("user_id").(string) // De middleware
 	var req dto.MFAVerifyRequestDTO
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		writeError(w, http.StatusBadRequest, "Invalid JSON", "invalid_json", "auth", nil)
 		return
 	}
 
 	err := h.service.VerifyMFA(r.Context(), userID, req.Code)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusUnauthorized)
+		writeError(w, http.StatusUnauthorized, err.Error(), "mfa_invalid", "auth", nil)
 		return
 	}
 
@@ -113,7 +107,7 @@ func (h *AuthHandler) VerifyMFA(w http.ResponseWriter, r *http.Request) {
 func (h *AuthHandler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 	var req dto.RefreshTokenRequestDTO
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		writeError(w, http.StatusBadRequest, "Invalid JSON", "invalid_json", "auth", nil)
 		return
 	}
 
@@ -137,7 +131,7 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	jti := r.Context().Value("jti").(string) // De middleware
 	err := h.service.Logout(r.Context(), jti)
 	if err != nil {
-		http.Error(w, "Logout failed", http.StatusInternalServerError)
+		writeError(w, http.StatusInternalServerError, "Logout failed", "logout_error", "auth", nil)
 		return
 	}
 
