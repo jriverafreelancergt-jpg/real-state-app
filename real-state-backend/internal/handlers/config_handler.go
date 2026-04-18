@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -13,13 +14,18 @@ import (
 )
 
 type ConfigHandler struct {
-	configRepo ports.SecurityConfigRepository
-	auditRepo  ports.AuditRepository // Para registrar cambios en configuración
+	configRepo  ports.SecurityConfigRepository
+	auditRepo   ports.AuditRepository // Para registrar cambios en configuración
+	authService ports.AuthService     // Para validar permisos
 }
 
 // NewConfigHandler crea un handler con repositorios necesarios
-func NewConfigHandler(configRepo ports.SecurityConfigRepository, auditRepo ports.AuditRepository) *ConfigHandler {
-	return &ConfigHandler{configRepo: configRepo, auditRepo: auditRepo}
+func NewConfigHandler(configRepo ports.SecurityConfigRepository, auditRepo ports.AuditRepository, authService ports.AuthService) *ConfigHandler {
+	return &ConfigHandler{
+		configRepo:  configRepo,
+		auditRepo:   auditRepo,
+		authService: authService,
+	}
 }
 
 // GetSecurityConfig obtiene todas las configuraciones de seguridad
@@ -60,10 +66,17 @@ func (h *ConfigHandler) GetSecurityConfig(w http.ResponseWriter, r *http.Request
 	json.NewEncoder(w).Encode(configs)
 }
 
-// UpdateSecurityConfig actualiza una configuración con validaciones y audit
+// UpdateSecurityConfig actualiza una configuración con validaciones, RBAC y audit
 // Acepta tanto query params (?key=...&value=...) como JSON en el body:
 // { "key": "ACCESS_TOKEN_TTL_MINUTES", "value": 15 }
+// Requiere permiso "manage_security_config"
 func (h *ConfigHandler) UpdateSecurityConfig(w http.ResponseWriter, r *http.Request) {
+	// Validar permiso RBAC
+	if err := h.checkPermission(r, "manage_security_config"); err != nil {
+		http.Error(w, `{"error": "Insufficient permissions"}`, http.StatusForbidden)
+		return
+	}
+
 	// Primero intentar decodificar JSON si Content-Type es application/json
 	var key string
 	var v int
@@ -179,4 +192,28 @@ func (h *ConfigHandler) UpdateSecurityConfig(w http.ResponseWriter, r *http.Requ
 		"key":     key,
 		"value":   strconv.Itoa(v),
 	})
+}
+
+// checkPermission valida que el usuario tenga el permiso especificado
+func (h *ConfigHandler) checkPermission(r *http.Request, requiredPermission string) error {
+	// Obtener user_id del contexto (establecido por JWTMiddleware)
+	userID, ok := r.Context().Value("user_id").(string)
+	if !ok || userID == "" {
+		return errors.New("user_id not found in context")
+	}
+
+	// Obtener permisos del usuario
+	permissions, err := h.authService.GetUserPermissions(r.Context(), userID)
+	if err != nil {
+		return err
+	}
+
+	// Verificar si el permiso está en la lista
+	for _, perm := range permissions {
+		if perm.Name == requiredPermission {
+			return nil
+		}
+	}
+
+	return errors.New("permission denied")
 }

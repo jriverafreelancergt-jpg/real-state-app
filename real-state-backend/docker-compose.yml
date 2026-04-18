@@ -6,6 +6,11 @@ services:
     build: . 
     container_name: real-state-backend
     restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    # IMPORTANTE: privileged permite acceso al reloj del host para sincronización de tiempo
+    privileged: true
     ports:
       - "8080:8080"
     
@@ -16,6 +21,7 @@ services:
     environment:
       # Sobrescribimos o definimos variables críticas aquí si es necesario
       GO_ENV: development
+      TZ: "America/Guatemala"
       # IMPORTANTE: El host (@nombre_del_contenedor) debe coincidir con el nombre
       # del contenedor de tu DB en la red externa.
       # Si tu contenedor de DB se llama 'postgres_server', cambia '@db' por '@postgres_server'
@@ -24,11 +30,40 @@ services:
     # 3. VOLÚMENES: Para desarrollo. Mapea tu código local al contenedor.
     volumes:
       - .:/app
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro 
     
     networks:
       - realstate_network
+
+  db:
+    image: postgres:15
+    container_name: postgres_server_realstate
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-uadmin}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-$R3hat555}
+      POSTGRES_DB: ${DB_NAME:-realstatedb}
+      TZ: "America/Guatemala"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    networks:
+      - realstate_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-uadmin}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 # Definición de la red externa
 networks:
   realstate_network:
    driver: bridge 
+
+# Volúmenes
+volumes:
+  postgres_data:

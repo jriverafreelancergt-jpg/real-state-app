@@ -16,14 +16,7 @@ type CreatePropertyDTO struct {
 	Type        string  `json:"type"`
 }
 
-// IsValid realiza una validación básica de seguridad de los datos de entrada
-func (d *CreatePropertyDTO) IsValid() bool {
-	// Reglas de negocio básicas: Título no vacío y precio positivo
-	if d.Title == "" || d.Price <= 0 || len(d.Description) < 10 {
-		return false
-	}
-	return true
-}
+// Validate realiza validación completa de los datos de entrada
 func (d *CreatePropertyDTO) Validate() error {
 	if d.Title == "" {
 		return errors.New("title is required")

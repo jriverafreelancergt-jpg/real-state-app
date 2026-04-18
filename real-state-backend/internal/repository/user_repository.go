@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"real-state-backend/internal/core/domain"
+	"real-state-backend/pkg/database"
 	"time"
 
 	"github.com/google/uuid"
@@ -28,7 +29,10 @@ func (r *UserRepository) Create(ctx context.Context, user *domain.User) error {
 	user.UpdatedAt = now
 
 	_, err := r.db.ExecContext(ctx, query, user.ID, user.Username, user.Email, user.PasswordHash, user.MFASecret, user.FailedAttempts, user.LockedUntil, user.CreatedAt, user.UpdatedAt)
-	return err
+	if err != nil {
+		return database.HandleError(ctx, err, "Create", "users", map[string]interface{}{"username": user.Username, "email": user.Email})
+	}
+	return nil
 }
 
 func (r *UserRepository) GetByUsername(ctx context.Context, username string) (*domain.User, error) {
@@ -42,7 +46,7 @@ func (r *UserRepository) GetByUsername(ctx context.Context, username string) (*d
 		&user.FailedAttempts, &user.LockedUntil, &user.CreatedAt, &user.UpdatedAt,
 	)
 	if err != nil {
-		return nil, err
+		return nil, database.HandleError(ctx, err, "GetByUsername", "users", map[string]interface{}{"username": username})
 	}
 	return user, nil
 }
@@ -58,7 +62,7 @@ func (r *UserRepository) GetByID(ctx context.Context, id string) (*domain.User, 
 		&user.FailedAttempts, &user.LockedUntil, &user.CreatedAt, &user.UpdatedAt,
 	)
 	if err != nil {
-		return nil, err
+		return nil, database.HandleError(ctx, err, "GetByID", "users", map[string]interface{}{"id": id})
 	}
 	return user, nil
 }
@@ -66,13 +70,19 @@ func (r *UserRepository) GetByID(ctx context.Context, id string) (*domain.User, 
 func (r *UserRepository) UpdateFailedAttempts(ctx context.Context, id string, attempts int, lockedUntil *time.Time) error {
 	query := `UPDATE users SET failed_attempts = $1, locked_until = $2, updated_at = $3 WHERE id = $4`
 	_, err := r.db.ExecContext(ctx, query, attempts, lockedUntil, time.Now(), id)
-	return err
+	if err != nil {
+		return database.HandleError(ctx, err, "UpdateFailedAttempts", "users", map[string]interface{}{"id": id, "attempts": attempts})
+	}
+	return nil
 }
 
 func (r *UserRepository) UpdateMFASecret(ctx context.Context, id string, secret string) error {
 	query := `UPDATE users SET mfa_secret = $1, updated_at = $2 WHERE id = $3`
 	_, err := r.db.ExecContext(ctx, query, secret, time.Now(), id)
-	return err
+	if err != nil {
+		return database.HandleError(ctx, err, "UpdateMFASecret", "users", map[string]interface{}{"id": id})
+	}
+	return nil
 }
 
 // GetPermissions retorna los permisos efectivos del usuario (vía roles)
@@ -87,7 +97,7 @@ func (r *UserRepository) GetPermissions(ctx context.Context, userID string) ([]d
 	`
 	rows, err := r.db.QueryContext(ctx, query, userID)
 	if err != nil {
-		return nil, err
+		return nil, database.HandleError(ctx, err, "GetPermissions", "permissions", map[string]interface{}{"user_id": userID})
 	}
 	defer rows.Close()
 
@@ -96,13 +106,13 @@ func (r *UserRepository) GetPermissions(ctx context.Context, userID string) ([]d
 		var p domain.Permission
 		var createdAt time.Time
 		if err := rows.Scan(&p.ID, &p.Name, &p.Resource, &p.Action, &createdAt); err != nil {
-			return nil, err
+			return nil, database.HandleError(ctx, err, "GetPermissions (scan)", "permissions", map[string]interface{}{"user_id": userID})
 		}
 		p.CreatedAt = createdAt
 		perms = append(perms, p)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, database.HandleError(ctx, err, "GetPermissions (rows.Err)", "permissions", map[string]interface{}{"user_id": userID})
 	}
 	return perms, nil
 }

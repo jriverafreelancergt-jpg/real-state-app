@@ -30,6 +30,8 @@ type AuthService interface {
 	Logout(ctx context.Context, tokenJTI string) error
 	ValidateSession(ctx context.Context, tokenJTI string) (*domain.UserSession, error)
 	GetUserPermissions(ctx context.Context, userID string) ([]domain.Permission, error)
+	// LogAuditError registra un error auditable en la tabla de auditoría
+	LogAuditError(ctx context.Context, eventType string, err error, userID *string) error
 }
 
 // UserRepository define operaciones de BD para usuarios.

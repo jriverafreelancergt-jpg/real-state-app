@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"real-state-backend/internal/repository"
+	"strings"
 	"time"
 )
 
@@ -20,6 +21,9 @@ type Config struct {
 	RefreshTokenTTL   time.Duration
 	MaxFailedAttempts int
 	LockoutDuration   time.Duration
+	AllowedOrigins    []string
+	RedisAddr         string // Redis address (ej: localhost:6379)
+	CacheTTL          time.Duration
 }
 
 func LoadConfig() *Config {
@@ -32,6 +36,10 @@ func LoadConfig() *Config {
 	dbName := getEnv("DB_NAME", "realstatedb")
 	dbURL := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable", user, password, host, port, dbName)
 
+	// Parsear ALLOWED_ORIGINS desde env var (ej: "http://localhost:3000,https://app.com")
+	allowedOriginsStr := getEnv("ALLOWED_ORIGINS", "http://localhost:3000")
+	allowedOrigins := parseOrigins(allowedOriginsStr)
+
 	return &Config{
 		ServerPort:        getEnv("SERVER_PORT", "8080"),
 		DBUrl:             dbURL,
@@ -42,6 +50,9 @@ func LoadConfig() *Config {
 		RefreshTokenTTL:   7 * 24 * time.Hour,
 		MaxFailedAttempts: 5,
 		LockoutDuration:   15 * time.Minute,
+		AllowedOrigins:    allowedOrigins,
+		RedisAddr:         getEnv("REDIS_ADDR", "localhost:6379"),
+		CacheTTL:          15 * time.Minute,
 	}
 }
 
@@ -83,6 +94,19 @@ func LoadConfigFromDB(cfg *Config, db *sql.DB) *Config {
 	slog.Info("Security config loaded from database", "access_ttl", cfg.AccessTokenTTL, "refresh_ttl", cfg.RefreshTokenTTL)
 	return cfg
 }
+
+// parseOrigins parsea la cadena de orígenes permitidos (ej: "http://localhost:3000,https://app.com")
+func parseOrigins(originsStr string) []string {
+	if originsStr == "" {
+		return []string{"http://localhost:3000"}
+	}
+	origins := strings.Split(originsStr, ",")
+	for i := range origins {
+		origins[i] = strings.TrimSpace(origins[i])
+	}
+	return origins
+}
+
 func getEnv(key, fallback string) string {
 	if value, exists := os.LookupEnv(key); exists {
 		return value

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"real-state-backend/internal/core/domain"
+	"real-state-backend/pkg/database"
 	"time"
 
 	"github.com/google/uuid"
@@ -34,7 +35,10 @@ func (r *SessionRepository) Create(ctx context.Context, session *domain.UserSess
 
 	_, err := r.db.ExecContext(ctx, query, session.ID, session.UserID, session.TokenJTI, session.RefreshTokenHash,
 		session.DeviceID, locationJSON, session.UserAgent, deviceJSON, session.CreatedAt, session.ExpiresAt, session.Revoked)
-	return err
+	if err != nil {
+		return database.HandleError(ctx, err, "Create", "user_sessions", map[string]interface{}{"user_id": session.UserID, "device_id": session.DeviceID})
+	}
+	return nil
 }
 
 func (r *SessionRepository) GetByTokenJTI(ctx context.Context, jti string) (*domain.UserSession, error) {
@@ -50,7 +54,7 @@ func (r *SessionRepository) GetByTokenJTI(ctx context.Context, jti string) (*dom
 		&session.CreatedAt, &session.ExpiresAt, &session.Revoked,
 	)
 	if err != nil {
-		return nil, err
+		return nil, database.HandleError(ctx, err, "GetByTokenJTI", "user_sessions", map[string]interface{}{"jti": jti})
 	}
 
 	json.Unmarshal(locationJSON, &session.LocationData)
@@ -61,17 +65,26 @@ func (r *SessionRepository) GetByTokenJTI(ctx context.Context, jti string) (*dom
 func (r *SessionRepository) RevokeByUserID(ctx context.Context, userID string) error {
 	query := `UPDATE user_sessions SET revoked = TRUE WHERE user_id = $1`
 	_, err := r.db.ExecContext(ctx, query, userID)
-	return err
+	if err != nil {
+		return database.HandleError(ctx, err, "RevokeByUserID", "user_sessions", map[string]interface{}{"user_id": userID})
+	}
+	return nil
 }
 
 func (r *SessionRepository) RevokeByJTI(ctx context.Context, jti string) error {
 	query := `UPDATE user_sessions SET revoked = TRUE WHERE token_jti = $1`
 	_, err := r.db.ExecContext(ctx, query, jti)
-	return err
+	if err != nil {
+		return database.HandleError(ctx, err, "RevokeByJTI", "user_sessions", map[string]interface{}{"jti": jti})
+	}
+	return nil
 }
 
 func (r *SessionRepository) UpdateRefreshToken(ctx context.Context, jti string, newHash string, newExpiry time.Time) error {
 	query := `UPDATE user_sessions SET refresh_token_hash = $1, expires_at = $2 WHERE token_jti = $3`
 	_, err := r.db.ExecContext(ctx, query, newHash, newExpiry, jti)
-	return err
+	if err != nil {
+		return database.HandleError(ctx, err, "UpdateRefreshToken", "user_sessions", map[string]interface{}{"jti": jti})
+	}
+	return nil
 }

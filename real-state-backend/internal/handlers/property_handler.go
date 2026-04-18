@@ -19,16 +19,32 @@ func NewPropertyHandler(s ports.PropertyService) *PropertyHandler {
 	return &PropertyHandler{service: s}
 }
 
-// GetAll: Resuelve el error de "undefined GetAll" en main.go
+const (
+	defaultPageSize = 10
+	minPageSize     = 1
+	maxPageSize     = 100
+)
+
+// GetAll lista todas las propiedades con paginación configurable
 func (h *PropertyHandler) GetAll(w http.ResponseWriter, r *http.Request) {
-	// Seguridad: Validamos y sanitizamos parámetros de paginación
+	// Validación de página
 	pageStr := r.URL.Query().Get("page")
-	page, _ := strconv.Atoi(pageStr)
-	if page < 1 {
+	page, err := strconv.Atoi(pageStr)
+	if err != nil || page < 1 {
 		page = 1
 	}
 
-	properties, err := h.service.ListProperties(r.Context(), page, 10)
+	// Validación de limit (nuevo parámetro configurable)
+	limitStr := r.URL.Query().Get("limit")
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil || limit < minPageSize {
+		limit = defaultPageSize
+	}
+	if limit > maxPageSize {
+		limit = maxPageSize
+	}
+
+	properties, err := h.service.ListProperties(r.Context(), page, limit)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Error al listar propiedades", "list_properties_error", "property", nil)
 		return

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"real-state-backend/internal/core/ports"
+	contextpkg "real-state-backend/pkg/context"
 
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -17,31 +18,50 @@ type SecurityConfig struct {
 }
 
 // SecurityMiddleware agrupa los middlewares de seguridad
-func SecurityMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// 1. CORS (Cross-Origin Resource Sharing)
-		// Ajusta "*" al dominio específico de tu app en producción
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+func SecurityMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// 1. CORS (Cross-Origin Resource Sharing)
+			origin := r.Header.Get("Origin")
+			if isOriginAllowed(origin, allowedOrigins) {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+			}
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Request-ID, X-Client-ID, X-Device-ID, X-Client-Type, X-Client-Version, X-Device-Name")
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
 
-		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusOK)
-			return
+			if r.Method == "OPTIONS" {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+
+			// 2. Security Headers (Protección básica contra ataques comunes)
+			w.Header().Set("X-Content-Type-Options", "nosniff")
+			w.Header().Set("X-Frame-Options", "DENY")
+			w.Header().Set("X-XSS-Protection", "1; mode=block")
+			w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+
+			// 3. Aquí iría la validación de Rate Limiting (usando librería externa como tollbooth)
+
+			// Log de la petición (Auditoría básica)
+			slog.Debug("Request received", "method", r.Method, "path", r.URL.Path, "remote_addr", r.RemoteAddr, "origin", origin)
+
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// isOriginAllowed verifica si el origen está en la lista blanca
+func isOriginAllowed(origin string, allowedOrigins []string) bool {
+	if origin == "" {
+		return false
+	}
+	for _, allowed := range allowedOrigins {
+		if allowed == "*" || origin == allowed {
+			return true
 		}
-
-		// 2. Security Headers (Protección básica contra ataques comunes)
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.Header().Set("X-Frame-Options", "DENY")
-		w.Header().Set("X-XSS-Protection", "1; mode=block")
-
-		// 3. Aquí iría la validación de Rate Limiting (usando librería externa como tollbooth)
-
-		// Log de la petición (Auditoría básica)
-		slog.Info("Request received", "method", r.Method, "path", r.URL.Path, "remote_addr", r.RemoteAddr)
-
-		next.ServeHTTP(w, r)
-	})
+	}
+	return false
 }
 
 // JWTMiddleware valida el token JWT con JTI y consistencia de dispositivo
@@ -127,6 +147,14 @@ func JWTMiddleware(authService ports.AuthService, secret string) func(http.Handl
 			slog.Info("JWT validated", "user_id", userID, "jti", jti)
 			ctx := context.WithValue(r.Context(), "user_id", userID)
 			ctx = context.WithValue(ctx, "jti", jti)
+
+			// Enriquecer ClientIdentity con UserID y SessionID si está disponible
+			if clientIdentity := contextpkg.FromContext(ctx); clientIdentity != nil {
+				clientIdentity.UserID = userID
+				clientIdentity.SessionID = jti
+				ctx = contextpkg.WithClientIdentity(ctx, clientIdentity)
+			}
+
 			r = r.WithContext(ctx)
 
 			next.ServeHTTP(w, r)

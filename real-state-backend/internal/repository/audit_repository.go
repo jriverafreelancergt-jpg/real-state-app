@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"real-state-backend/internal/core/domain"
+	contextpkg "real-state-backend/pkg/context"
+	"real-state-backend/pkg/database"
 
 	"github.com/google/uuid"
 )
@@ -27,7 +29,23 @@ func (r *AuditRepository) LogEvent(ctx context.Context, log *domain.AuditLog) er
 	oldJSON, _ := json.Marshal(log.OldValues)
 	newJSON, _ := json.Marshal(log.NewValues)
 
+	// Si IPAddress está vacío, intentar obtenerla del contexto ClientIdentity
+	ipAddress := log.IPAddress
+	if ipAddress == "" {
+		if clientIdentity := contextpkg.FromContext(ctx); clientIdentity != nil {
+			ipAddress = clientIdentity.Origin
+		}
+	}
+	// Si aún está vacío, usar NULL (en lugar de cadena vacía) para el tipo inet
+	var ipAddressParam interface{} = ipAddress
+	if ipAddress == "" {
+		ipAddressParam = nil
+	}
+
 	_, err := r.db.ExecContext(ctx, query, log.ID, log.EventType, log.UserID, log.Resource, log.Action,
-		oldJSON, newJSON, log.IPAddress, log.UserAgent, log.Timestamp)
-	return err
+		oldJSON, newJSON, ipAddressParam, log.UserAgent, log.Timestamp)
+	if err != nil {
+		return database.HandleError(ctx, err, "LogEvent", "audit_logs", map[string]interface{}{"event_type": log.EventType, "resource": log.Resource, "action": log.Action})
+	}
+	return nil
 }

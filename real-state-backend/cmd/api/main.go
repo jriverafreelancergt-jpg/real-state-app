@@ -13,9 +13,11 @@ import (
 
 	// Internal
 	"real-state-backend/config"
+	"real-state-backend/internal/core/ports"
 	"real-state-backend/internal/handlers"
 	"real-state-backend/internal/repository"
 	"real-state-backend/internal/services"
+	"real-state-backend/pkg/cache"
 	"real-state-backend/pkg/middleware"
 )
 
@@ -43,11 +45,36 @@ func main() {
 	// Cargar configuración de seguridad desde BD
 	cfg = config.LoadConfigFromDB(cfg, db)
 
+	// 3.5 Inicializar Redis Cache (opcional, fallback a sin cache si falla)
+	var redisCache cache.Cache
+	redisCache, err = cache.NewRedisCache(cfg.RedisAddr)
+	if err != nil {
+		slog.Warn("Redis cache unavailable, running without cache", "error", err)
+		redisCache = nil
+	}
+	defer func() {
+		if rc, ok := redisCache.(*cache.RedisCache); ok {
+			if err := rc.Close(); err != nil {
+				slog.Warn("Failed to close Redis connection", "error", err)
+			}
+		}
+	}()
+
 	// 4. Inyección de Dependencias
 	userRepo := repository.NewUserRepository(db)
 	sessionRepo := repository.NewSessionRepository(db)
 	auditRepo := repository.NewAuditRepository(db)
-	authService := services.NewAuthService(userRepo, sessionRepo, auditRepo, cfg.JWTSecret, cfg.JWTPepper, cfg.AccessTokenTTL, cfg.RefreshTokenTTL, cfg.MaxFailedAttempts, cfg.LockoutDuration)
+	authServiceBase := services.NewAuthService(userRepo, sessionRepo, auditRepo, cfg.JWTSecret, cfg.JWTPepper, cfg.AccessTokenTTL, cfg.RefreshTokenTTL, cfg.MaxFailedAttempts, cfg.LockoutDuration)
+
+	// Usar authServiceBase como authService
+	var authService ports.AuthService = authServiceBase
+	if redisCache != nil {
+		authService = services.NewCachedAuthService(authServiceBase, redisCache, cfg.CacheTTL)
+		slog.Info("AuthService initialized with Redis caching")
+	} else {
+		slog.Info("AuthService initialized without caching")
+	}
+
 	authHandler := handlers.NewAuthHandler(authService)
 
 	propRepo := repository.NewPropertyRepository(db)
@@ -55,56 +82,66 @@ func main() {
 	propHandler := handlers.NewPropertyHandler(propService)
 
 	configRepo := repository.NewSecurityConfigRepository(db)
-	configHandler := handlers.NewConfigHandler(configRepo, auditRepo)
+	configHandler := handlers.NewConfigHandler(configRepo, auditRepo, authService)
 
 	// 5. Router y Rutas
 	mux := http.NewServeMux()
-	// Endpoints públicos
+	// Endpoints públicos (v1)
+	mux.HandleFunc("POST /v1/login", authHandler.Login)
+	mux.HandleFunc("POST /v1/refresh", authHandler.RefreshToken)
+	// Backward compatibility (sin versión)
 	mux.HandleFunc("POST /login", authHandler.Login)
 	mux.HandleFunc("POST /refresh", authHandler.RefreshToken)
 
-	// Subrouter para rutas protegidas
+	// Subrouter para rutas protegidas (v1)
 	protectedMux := http.NewServeMux()
+	protectedMux.HandleFunc("POST /v1/verify-mfa", authHandler.VerifyMFA)
+	protectedMux.HandleFunc("POST /v1/logout", authHandler.Logout)
+	protectedMux.HandleFunc("GET /v1/properties", propHandler.GetAll)
+	protectedMux.HandleFunc("GET /v1/properties/{id}", propHandler.GetByID)
+	protectedMux.HandleFunc("POST /v1/properties", propHandler.CreateProperty)
+	protectedMux.HandleFunc("GET /v1/config", configHandler.GetSecurityConfig)
+	protectedMux.HandleFunc("PUT /v1/config", configHandler.UpdateSecurityConfig)
+	// Backward compatibility (sin versión)
 	protectedMux.HandleFunc("POST /verify-mfa", authHandler.VerifyMFA)
 	protectedMux.HandleFunc("POST /logout", authHandler.Logout)
 	protectedMux.HandleFunc("GET /properties", propHandler.GetAll)
 	protectedMux.HandleFunc("GET /properties/{id}", propHandler.GetByID)
 	protectedMux.HandleFunc("POST /properties", propHandler.CreateProperty)
-	// Manejar /config por método. PUT requiere permiso 'manage_security_config'
-	protectedMux.HandleFunc("/config", func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			configHandler.GetSecurityConfig(w, r)
-		case http.MethodPut:
-			// Aplica RBAC sólo para la acción de actualizar configuración
-			rbacManage := middleware.RBACMiddleware(authService, "manage_security_config")
-			rbacManage(http.HandlerFunc(configHandler.UpdateSecurityConfig)).ServeHTTP(w, r)
-		default:
-			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
-		}
-	})
+	protectedMux.HandleFunc("GET /config", configHandler.GetSecurityConfig)
+	protectedMux.HandleFunc("PUT /config", configHandler.UpdateSecurityConfig)
 
 	// Aplicar middlewares
 	jwtMiddleware := middleware.JWTMiddleware(authService, cfg.JWTSecret)
-	rbacMiddleware := middleware.RBACMiddleware(authService, "create_property")
 
 	protectedHandler := jwtMiddleware(protectedMux)
-	// Para rutas específicas con RBAC, aplicar adicionalmente
-	createPropertyHandler := jwtMiddleware(rbacMiddleware(http.HandlerFunc(propHandler.CreateProperty)))
 
-	// Combinar routers
+	// Combinar routers (v1)
+	mux.Handle("/v1/verify-mfa", protectedHandler)
+	mux.Handle("/v1/logout", protectedHandler)
+	mux.Handle("/v1/properties", protectedHandler)
+	mux.Handle("/v1/properties/", protectedHandler)
+	mux.Handle("POST /v1/properties", protectedHandler)
+
+	// Rutas para /v1/config (protegidas, RBAC validado en el handler)
+	mux.Handle("/v1/config", protectedHandler)
+	mux.Handle("/v1/config/", protectedHandler)
+
+	// Backward compatibility (sin versión)
 	mux.Handle("/verify-mfa", protectedHandler)
 	mux.Handle("/logout", protectedHandler)
 	mux.Handle("/properties", protectedHandler)
 	mux.Handle("/properties/", protectedHandler)
-	mux.Handle("POST /properties", createPropertyHandler) // Sobrescribir con RBAC
-
-	// Rutas para /config (protegidas). GET/PUT se despachan dentro de protectedMux
+	mux.Handle("POST /properties", protectedHandler)
 	mux.Handle("/config", protectedHandler)
 	mux.Handle("/config/", protectedHandler)
 
 	// 6. Aplicar Middleware
-	handlerWithMiddleware := middleware.SecurityMiddleware(mux)
+	handlerWithMiddleware := middleware.SecurityMiddleware(cfg.AllowedOrigins)(
+		middleware.ClientIdentificationMiddleware(
+			middleware.RequestIDMiddleware(mux),
+		),
+	)
 
 	// 7. Iniciar Servidor
 	slog.Info("Server starting", "port", cfg.ServerPort)

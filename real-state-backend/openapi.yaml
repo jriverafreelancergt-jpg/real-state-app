@@ -1,0 +1,521 @@
+openapi: 3.0.0
+info:
+  title: Real State Backend API
+  description: API backend para aplicación de bienes raíces con autenticación JWT, MFA y RBAC
+  version: 1.0.0
+  contact:
+    name: Real Estate Team
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:8080
+    description: Development server
+  - url: https://api.realstate.example.com
+    description: Production server
+
+paths:
+  /v1/login:
+    post:
+      summary: Autenticación de usuario
+      tags:
+        - Authentication
+      description: Autentica un usuario con nombre de usuario y contraseña. Requiere MFA si está habilitado.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Autenticación exitosa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          description: JSON inválido o credenciales vacías
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Credenciales inválidas o usuario bloqueado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validación fallida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/refresh:
+    post:
+      summary: Refrescar token JWT
+      tags:
+        - Authentication
+      description: Genera un nuevo access token usando un refresh token válido
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshTokenRequest'
+      responses:
+        '200':
+          description: Token refrescado exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          description: Refresh token inválido o expirado
+        '400':
+          description: Request inválido
+
+  /v1/verify-mfa:
+    post:
+      summary: Verificar código MFA
+      tags:
+        - Authentication
+      security:
+        - bearerAuth: []
+      description: Verifica un código MFA (TOTP) generado por el usuario
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MFAVerifyRequest'
+      responses:
+        '200':
+          description: MFA verificado exitosamente
+        '400':
+          description: Código MFA inválido
+        '401':
+          description: No autorizado
+
+  /v1/logout:
+    post:
+      summary: Cerrar sesión
+      tags:
+        - Authentication
+      security:
+        - bearerAuth: []
+      description: Revoca el token JWT actual y cierra la sesión del usuario
+      responses:
+        '200':
+          description: Sesión cerrada exitosamente
+        '401':
+          description: No autorizado
+
+  /v1/properties:
+    get:
+      summary: Listar propiedades
+      tags:
+        - Properties
+      security:
+        - bearerAuth: []
+      description: Obtiene lista paginada de propiedades inmobiliarias
+      parameters:
+        - name: page
+          in: query
+          description: Número de página (por defecto 1)
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          description: Cantidad de items por página (1-100, por defecto 10)
+          schema:
+            type: integer
+            default: 10
+            minimum: 1
+            maximum: 100
+      responses:
+        '200':
+          description: Lista de propiedades
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Property'
+        '401':
+          description: No autorizado
+        '500':
+          description: Error interno del servidor
+
+    post:
+      summary: Crear nueva propiedad
+      tags:
+        - Properties
+      security:
+        - bearerAuth: []
+      description: Crea una nueva propiedad. Requiere permiso 'create_property'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePropertyRequest'
+      responses:
+        '201':
+          description: Propiedad creada exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Property'
+        '400':
+          description: JSON inválido
+        '401':
+          description: No autorizado
+        '403':
+          description: Permiso denegado
+        '422':
+          description: Validación fallida
+
+  /v1/properties/{id}:
+    get:
+      summary: Obtener propiedad por ID
+      tags:
+        - Properties
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID de la propiedad
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Propiedad encontrada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Property'
+        '400':
+          description: ID inválido
+        '401':
+          description: No autorizado
+        '404':
+          description: Propiedad no encontrada
+
+  /v1/config:
+    get:
+      summary: Obtener configuración de seguridad
+      tags:
+        - Configuration
+      security:
+        - bearerAuth: []
+      description: Obtiene todas las configuraciones de seguridad del sistema
+      responses:
+        '200':
+          description: Configuración obtenida exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecurityConfig'
+        '401':
+          description: No autorizado
+        '500':
+          description: Error interno del servidor
+
+    put:
+      summary: Actualizar configuración de seguridad
+      tags:
+        - Configuration
+      security:
+        - bearerAuth: []
+      description: Actualiza una configuración de seguridad. Requiere permiso 'manage_security_config'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateConfigRequest'
+      responses:
+        '200':
+          description: Configuración actualizada exitosamente
+        '400':
+          description: Request inválido o clave de configuración inválida
+        '401':
+          description: No autorizado
+        '403':
+          description: Permiso denegado
+        '500':
+          description: Error interno del servidor
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token obtenido del endpoint /v1/login
+
+  schemas:
+    LoginRequest:
+      type: object
+      required:
+        - username
+        - password
+      properties:
+        username:
+          type: string
+          minLength: 1
+          example: jrivera
+        password:
+          type: string
+          minLength: 1
+          example: SecurePassword123!
+
+    LoginResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        code:
+          type: integer
+          example: 200
+        message:
+          type: string
+          example: Login successful
+        data:
+          type: object
+          properties:
+            user:
+              $ref: '#/components/schemas/UserInfo'
+            authentication:
+              type: object
+              properties:
+                access_token:
+                  type: string
+                  description: JWT access token
+                refresh_token:
+                  type: string
+                  description: Refresh token para obtener nuevos access tokens
+                token_type:
+                  type: string
+                  example: Bearer
+                expires_in:
+                  type: integer
+                  description: Tiempo en segundos hasta expiración
+                  example: 900
+                mfa_required:
+                  type: boolean
+                  example: false
+        meta:
+          type: object
+          properties:
+            server_time:
+              type: string
+              format: date-time
+            request_id:
+              type: string
+
+    RefreshTokenRequest:
+      type: object
+      required:
+        - refresh_token
+      properties:
+        refresh_token:
+          type: string
+          example: eyJhbGciOiJIUzI1NiIs...
+
+    TokenResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+        token_type:
+          type: string
+          example: Bearer
+        expires_in:
+          type: integer
+          description: Tiempo en segundos hasta expiración
+
+    MFAVerifyRequest:
+      type: object
+      required:
+        - code
+      properties:
+        code:
+          type: string
+          pattern: '^\d{6}$'
+          example: '123456'
+          description: Código TOTP de 6 dígitos
+
+    UserInfo:
+      type: object
+      properties:
+        id:
+          type: string
+          example: user-uuid-1234
+        username:
+          type: string
+          example: jrivera
+        email:
+          type: string
+          format: email
+          example: jrivera@example.com
+
+    CreatePropertyRequest:
+      type: object
+      required:
+        - title
+        - price
+        - currency
+        - location
+        - type
+      properties:
+        title:
+          type: string
+          minLength: 3
+          maxLength: 200
+          example: Casa moderna en zona residencial
+        description:
+          type: string
+          minLength: 10
+          example: Hermosa casa con 3 habitaciones...
+        price:
+          type: number
+          format: double
+          minimum: 0.01
+          example: 250000.00
+        currency:
+          type: string
+          enum:
+            - USD
+            - GTQ
+          example: USD
+        location:
+          type: string
+          example: Calle Principal 123, Guatemala
+        type:
+          type: string
+          enum:
+            - Casa
+            - Apartamento
+            - Terreno
+            - Oficina
+          example: Casa
+
+    Property:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        title:
+          type: string
+          example: Casa moderna
+        description:
+          type: string
+        price:
+          type: number
+          format: double
+        currency:
+          type: string
+          example: USD
+        address:
+          type: string
+        city:
+          type: string
+        type:
+          type: string
+        bedrooms:
+          type: integer
+        bathrooms:
+          type: integer
+        area_sqm:
+          type: number
+          format: double
+        lat:
+          type: number
+          format: double
+          nullable: true
+        lng:
+          type: number
+          format: double
+          nullable: true
+        main_image:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    SecurityConfig:
+      type: object
+      properties:
+        ACCESS_TOKEN_TTL_MINUTES:
+          type: integer
+          example: 15
+        REFRESH_TOKEN_TTL_DAYS:
+          type: integer
+          example: 7
+        MAX_FAILED_ATTEMPTS:
+          type: integer
+          example: 5
+        LOCKOUT_DURATION_MINUTES:
+          type: integer
+          example: 15
+
+    UpdateConfigRequest:
+      type: object
+      required:
+        - key
+        - value
+      properties:
+        key:
+          type: string
+          enum:
+            - ACCESS_TOKEN_TTL_MINUTES
+            - REFRESH_TOKEN_TTL_DAYS
+            - MAX_FAILED_ATTEMPTS
+            - LOCKOUT_DURATION_MINUTES
+          example: ACCESS_TOKEN_TTL_MINUTES
+        value:
+          type: integer
+          example: 30
+
+    ErrorResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: error
+        code:
+          type: integer
+          example: 400
+        message:
+          type: string
+          example: Invalid request
+        error_code:
+          type: string
+          example: invalid_json
+        trace_id:
+          type: string
+          description: ID único para rastrear el error en logs
+          example: property-550e8400-e29b-41d4-a716-446655440000
+        meta:
+          type: object
+          nullable: true
+
+tags:
+  - name: Authentication
+    description: Endpoints para autenticación y gestión de sesiones
+  - name: Properties
+    description: Endpoints para gestión de propiedades inmobiliarias
+  - name: Configuration
+    description: Endpoints para gestión de configuración del sistema

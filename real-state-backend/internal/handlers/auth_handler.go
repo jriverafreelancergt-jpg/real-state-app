@@ -2,9 +2,11 @@ package handlers
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"real-state-backend/internal/core/ports"
 	"real-state-backend/internal/dto"
+	"real-state-backend/pkg/audit"
 	"time"
 
 	"github.com/google/uuid"
@@ -16,6 +18,47 @@ type AuthHandler struct {
 
 func NewAuthHandler(s ports.AuthService) *AuthHandler {
 	return &AuthHandler{service: s}
+}
+
+// handleAuthError maneja errores de autenticación con auditoría automática
+func (h *AuthHandler) handleAuthError(w http.ResponseWriter, r *http.Request, err error, eventType string, userID *string) {
+	// Si es un error auditable, registrarlo
+	if auditErr, ok := err.(*audit.AuditableError); ok {
+		// Log técnico
+		slog.Error("auth_error",
+			"event_type", eventType,
+			"error_code", auditErr.Code,
+			"status_code", auditErr.StatusCode,
+			"user_id", userID,
+		)
+
+		// Log de auditoría en BD
+		auditErr2 := h.service.LogAuditError(r.Context(), eventType, err, userID)
+		if auditErr2 != nil {
+			// Si falla la auditoría, loguear el error pero seguir con la respuesta
+			slog.Error("audit_log_failed",
+				"event_type", eventType,
+				"error", auditErr2.Error(),
+			)
+		} else {
+			slog.Debug("audit_log_recorded",
+				"event_type", eventType,
+				"error_code", string(auditErr.Code),
+			)
+		}
+
+		// Respuesta al cliente (sin exponer detalles técnicos)
+		writeError(w, auditErr.StatusCode, auditErr.Message, string(auditErr.Code), "auth", nil)
+		return
+	}
+
+	// Error no auditable (validación, parsing, etc)
+	slog.Warn("non_auditable_error",
+		"event_type", eventType,
+		"error", err.Error(),
+	)
+
+	writeError(w, http.StatusInternalServerError, "Internal server error", "internal_error", "auth", nil)
 }
 
 // Login maneja el endpoint de login
@@ -50,7 +93,8 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	// Llamar al servicio
 	resp, err := h.service.Login(r.Context(), req, deviceFingerprint, locationData, userAgent, deviceMetadata)
 	if err != nil {
-		writeError(w, http.StatusUnauthorized, err.Error(), "invalid_credentials", "auth", nil)
+		// Auditar errores de seguridad
+		h.handleAuthError(w, r, err, "LOGIN_FAILURE", nil)
 		return
 	}
 
@@ -95,7 +139,10 @@ func (h *AuthHandler) VerifyMFA(w http.ResponseWriter, r *http.Request) {
 
 	err := h.service.VerifyMFA(r.Context(), userID, req.Code)
 	if err != nil {
-		writeError(w, http.StatusUnauthorized, err.Error(), "mfa_invalid", "auth", nil)
+		// Auditar intento fallido de MFA
+		auditErr := audit.ErrInvalidMFA()
+		h.service.LogAuditError(r.Context(), "MFA_FAILURE", auditErr, &userID)
+		writeError(w, auditErr.StatusCode, auditErr.Message, string(auditErr.Code), "auth", nil)
 		return
 	}
 
@@ -118,7 +165,8 @@ func (h *AuthHandler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := h.service.RefreshToken(r.Context(), req.RefreshToken, deviceFingerprint)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusUnauthorized)
+		// Auditar errores de refresh token
+		h.handleAuthError(w, r, err, "TOKEN_REFRESH_FAILURE", nil)
 		return
 	}
 

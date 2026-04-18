@@ -13,6 +13,7 @@ import (
 	"real-state-backend/internal/core/domain"
 	"real-state-backend/internal/core/ports"
 	"real-state-backend/internal/dto"
+	"real-state-backend/pkg/audit"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
@@ -51,8 +52,10 @@ func NewAuthService(userRepo ports.UserRepository, sessionRepo ports.SessionRepo
 func (s *AuthService) Login(ctx context.Context, req dto.LoginRequestDTO, deviceFingerprint string, locationData map[string]interface{}, userAgent string, deviceMetadata map[string]interface{}) (dto.LoginResponseDTO, error) {
 	user, err := s.userRepo.GetByUsername(ctx, req.Username)
 	if err != nil {
-		s.logAudit(ctx, "LOGIN_FAILURE", nil, "auth", "login", nil, map[string]interface{}{"username": req.Username}, "", userAgent)
-		return dto.LoginResponseDTO{}, errors.New("invalid credentials")
+		// Usuario no encontrado - es un error de seguridad auditable
+		auditErr := audit.ErrInvalidCredentials()
+		s.LogAuditError(ctx, "LOGIN_FAILURE", auditErr, nil)
+		return dto.LoginResponseDTO{}, auditErr
 	}
 
 	// Debug log temporal (desactivar en producción)
@@ -60,8 +63,9 @@ func (s *AuthService) Login(ctx context.Context, req dto.LoginRequestDTO, device
 
 	// Verificar bloqueo
 	if user.LockedUntil != nil && time.Now().Before(*user.LockedUntil) {
-		s.logAudit(ctx, "LOGIN_FAILURE", &user.ID, "auth", "login", nil, map[string]interface{}{"reason": "account_locked"}, "", userAgent)
-		return dto.LoginResponseDTO{}, errors.New("account locked")
+		auditErr := audit.ErrAccountLocked()
+		s.LogAuditError(ctx, "LOGIN_FAILURE", auditErr, &user.ID)
+		return dto.LoginResponseDTO{}, auditErr
 	}
 
 	// Verificar contraseña
@@ -69,7 +73,8 @@ func (s *AuthService) Login(ctx context.Context, req dto.LoginRequestDTO, device
 	slog.Info("Password check result", "username", req.Username, "ok", pwOk) // temporal
 	if !pwOk {
 		s.handleFailedAttempt(ctx, user, userAgent)
-		return dto.LoginResponseDTO{}, errors.New("invalid credentials")
+		auditErr := audit.ErrInvalidCredentials()
+		return dto.LoginResponseDTO{}, auditErr
 	}
 
 	// Reset failed attempts on success
@@ -134,29 +139,34 @@ func (s *AuthService) RefreshToken(ctx context.Context, refreshToken string, dev
 		return s.jwtSecret, nil
 	})
 	if err != nil || !token.Valid {
-		return dto.TokenResponseDTO{}, errors.New("invalid refresh token")
+		auditErr := audit.ErrInvalidToken("invalid refresh token signature")
+		return dto.TokenResponseDTO{}, auditErr
 	}
 
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok {
-		return dto.TokenResponseDTO{}, errors.New("invalid token claims")
+		auditErr := audit.ErrInvalidToken("invalid token claims")
+		return dto.TokenResponseDTO{}, auditErr
 	}
 
 	jti, ok := claims["jti"].(string)
 	if !ok {
-		return dto.TokenResponseDTO{}, errors.New("missing JTI")
+		auditErr := audit.ErrInvalidJTI()
+		return dto.TokenResponseDTO{}, auditErr
 	}
 
 	session, err := s.sessionRepo.GetByTokenJTI(ctx, jti)
 	if err != nil || session.Revoked {
-		return dto.TokenResponseDTO{}, errors.New("session revoked")
+		auditErr := audit.ErrSessionRevoked()
+		return dto.TokenResponseDTO{}, auditErr
 	}
 
 	// Verificar device consistency
 	if subtle.ConstantTimeCompare([]byte(session.DeviceID), []byte(deviceFingerprint)) != 1 {
 		s.sessionRepo.RevokeByJTI(ctx, jti)
-		s.logAudit(ctx, "SESSION_HIJACK_ATTEMPT", &session.UserID, "auth", "refresh", nil, map[string]interface{}{"device_mismatch": true}, "", "")
-		return dto.TokenResponseDTO{}, errors.New("device mismatch")
+		auditErr := audit.ErrDeviceMismatch()
+		s.LogAuditError(ctx, "SESSION_HIJACK_ATTEMPT", auditErr, &session.UserID)
+		return dto.TokenResponseDTO{}, auditErr
 	}
 
 	// Generar nuevo access token
@@ -296,4 +306,64 @@ func (s *AuthService) logAudit(ctx context.Context, eventType string, userID *st
 		Timestamp: time.Now(),
 	}
 	s.auditRepo.LogEvent(ctx, log)
+}
+
+// LogAuditError registra un error auditable en la tabla de auditoría
+// Usado para registrar errores de seguridad significativos
+func (s *AuthService) LogAuditError(ctx context.Context, eventType string, err error, userID *string) error {
+	auditErr, ok := err.(*audit.AuditableError)
+	if !ok {
+		// Si no es un AuditableError, loguear y retornar
+		slog.Warn("LogAuditError: error no es AuditableError",
+			"event_type", eventType,
+			"error_type", fmt.Sprintf("%T", err),
+		)
+		return nil
+	}
+
+	// Construir newValues con la información del error
+	errorData := map[string]interface{}{
+		"error_code":    string(auditErr.Code),
+		"error_message": auditErr.Message,
+		"status_code":   auditErr.StatusCode,
+	}
+
+	// Agregar detalles adicionales si existen
+	if auditErr.Details != nil {
+		for k, v := range auditErr.Details {
+			errorData[k] = v
+		}
+	}
+
+	log := &domain.AuditLog{
+		EventType: eventType,
+		UserID:    userID,
+		Resource:  "auth",
+		Action:    "error_occurred",
+		NewValues: errorData,
+		Timestamp: time.Now(),
+	}
+
+	// Registrar el intento de guardar en BD
+	slog.Debug("LogAuditError: intentando guardar en BD",
+		"event_type", eventType,
+		"error_code", string(auditErr.Code),
+		"user_id", userID,
+	)
+
+	errorRepo := s.auditRepo.LogEvent(ctx, log)
+	if errorRepo != nil {
+		slog.Error("LogAuditError: fallo al guardar en BD",
+			"event_type", eventType,
+			"error_code", string(auditErr.Code),
+			"error", errorRepo.Error(),
+		)
+		return errorRepo
+	}
+
+	slog.Info("LogAuditError: guardado exitosamente en BD",
+		"event_type", eventType,
+		"error_code", string(auditErr.Code),
+	)
+	return nil
 }
