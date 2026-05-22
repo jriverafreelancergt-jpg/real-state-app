@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"log/slog"
 	"real-state-backend/internal/core/domain"
 	"real-state-backend/pkg/database"
 	"time"
@@ -33,11 +34,18 @@ func (r *SessionRepository) Create(ctx context.Context, session *domain.UserSess
 	locationJSON, _ := json.Marshal(session.LocationData)
 	deviceJSON, _ := json.Marshal(session.DeviceMetadata)
 
+	// Normalize ExpiresAt to UTC before storing to avoid timezone loss with TIMESTAMP columns
+	session.ExpiresAt = session.ExpiresAt.UTC()
+
 	_, err := r.db.ExecContext(ctx, query, session.ID, session.UserID, session.TokenJTI, session.RefreshTokenHash,
 		session.DeviceID, locationJSON, session.UserAgent, deviceJSON, session.CreatedAt, session.ExpiresAt, session.Revoked)
 	if err != nil {
 		return database.HandleError(ctx, err, "Create", "user_sessions", map[string]interface{}{"user_id": session.UserID, "device_id": session.DeviceID})
 	}
+
+	// Log de creación de sesión para trazabilidad
+	slog.Info("Session created", "id", session.ID, "user_id", session.UserID, "jti", session.TokenJTI, "device_id", session.DeviceID, "expires_at", session.ExpiresAt)
+
 	return nil
 }
 
@@ -59,6 +67,10 @@ func (r *SessionRepository) GetByTokenJTI(ctx context.Context, jti string) (*dom
 
 	json.Unmarshal(locationJSON, &session.LocationData)
 	json.Unmarshal(deviceJSON, &session.DeviceMetadata)
+
+	// Log de la sesión recuperada (nivel INFO para visibilidad)
+	slog.Info("Session retrieved from DB", "id", session.ID, "user_id", session.UserID, "jti", session.TokenJTI, "device_id", session.DeviceID, "revoked", session.Revoked, "expires_at", session.ExpiresAt)
+
 	return session, nil
 }
 

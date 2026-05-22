@@ -42,7 +42,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${DB_USER:-uadmin}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-$R3hat555}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-R3hat555}
       POSTGRES_DB: ${DB_NAME:-realstatedb}
       TZ: "America/Guatemala"
     ports:
@@ -54,7 +54,7 @@ services:
     networks:
       - realstate_network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-uadmin}"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-uadmin} -d ${DB_NAME:-realstatedb}"]
       interval: 10s
       timeout: 5s
       retries: 5

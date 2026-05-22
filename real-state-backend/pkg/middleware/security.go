@@ -70,6 +70,7 @@ func JWTMiddleware(authService ports.AuthService, secret string) func(http.Handl
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			authHeader := r.Header.Get("Authorization")
 			if authHeader == "" {
+				slog.Debug("Missing Authorization header", "remote_addr", r.RemoteAddr)
 				http.Error(w, `{"error": "Authorization header required"}`, http.StatusUnauthorized)
 				return
 			}
@@ -93,6 +94,7 @@ func JWTMiddleware(authService ports.AuthService, secret string) func(http.Handl
 			})
 
 			if err != nil || !token.Valid {
+				slog.Warn("Invalid token during parse/validation", "error", err)
 				http.Error(w, `{"error": "Invalid token"}`, http.StatusUnauthorized)
 				return
 			}
@@ -119,6 +121,7 @@ func JWTMiddleware(authService ports.AuthService, secret string) func(http.Handl
 			// Validar sesión
 			session, err := authService.ValidateSession(r.Context(), jti)
 			if err != nil {
+				slog.Warn("Session validation failed", "jti", jti, "error", err)
 				http.Error(w, `{"error": "Session invalid"}`, http.StatusUnauthorized)
 				return
 			}
@@ -128,8 +131,15 @@ func JWTMiddleware(authService ports.AuthService, secret string) func(http.Handl
 			if deviceFingerprint == "" {
 				deviceFingerprint = "default-device"
 			}
+			// Log del fingerprint recibido
+			slog.Info("Device fingerprint from request", "device_fingerprint", deviceFingerprint)
+			// Log de detalles de la sesión cargada
+			slog.Info("Session loaded", "jti", jti, "session_device_id", session.DeviceID, "session_revoked", session.Revoked, "session_expires_at", session.ExpiresAt)
+
 			if session.DeviceID != deviceFingerprint {
-				authService.Logout(r.Context(), jti) // Revocar sesión
+				slog.Warn("Device mismatch detected", "user_id", userID, "jti", jti, "device_fingerprint", deviceFingerprint, "session_device_id", session.DeviceID)
+				// Revocar sesión por inconsistencia de dispositivo
+				authService.Logout(r.Context(), jti)
 				http.Error(w, `{"error": "Device mismatch"}`, http.StatusUnauthorized)
 				return
 			}
