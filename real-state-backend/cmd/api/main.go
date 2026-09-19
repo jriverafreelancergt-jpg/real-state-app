@@ -17,6 +17,7 @@ import (
 	"real-state-backend/internal/handlers"
 	"real-state-backend/internal/repository"
 	"real-state-backend/internal/services"
+	"real-state-backend/internal/wasi"
 	"real-state-backend/pkg/cache"
 	"real-state-backend/pkg/middleware"
 )
@@ -81,6 +82,15 @@ func main() {
 	propService := services.NewPropertyService(propRepo)
 	propHandler := handlers.NewPropertyHandler(propService)
 
+	wasiClient := wasi.NewClient(cfg.WasiBaseURL, cfg.WasiCompanyID, cfg.WasiToken, 15*time.Second)
+	wasiAdapter := wasi.NewWasiAdapter(wasiClient)
+	syncService := services.NewPropertySyncService(wasiAdapter, propRepo, 5)
+	syncHandler := handlers.NewSyncHandler(syncService)
+
+	// Crear servicio de sync status (tracking de sincronización)
+	syncStatusService := services.NewGetSyncStatusService(propRepo, 60) // 60 minutos de freshness threshold
+	syncStatusHandler := handlers.NewSyncStatusHandler(syncStatusService, 60)
+
 	configRepo := repository.NewSecurityConfigRepository(db)
 	configHandler := handlers.NewConfigHandler(configRepo, auditRepo, authService)
 
@@ -102,6 +112,8 @@ func main() {
 	protectedMux.HandleFunc("POST /v1/properties", propHandler.CreateProperty)
 	protectedMux.HandleFunc("GET /v1/config", configHandler.GetSecurityConfig)
 	protectedMux.HandleFunc("PUT /v1/config", configHandler.UpdateSecurityConfig)
+	protectedMux.HandleFunc("POST /v1/admin/sync", syncHandler.TriggerSync)
+	protectedMux.HandleFunc("GET /v1/sync-status", syncStatusHandler.GetSyncStatus)
 	// Backward compatibility (sin versión)
 	protectedMux.HandleFunc("POST /verify-mfa", authHandler.VerifyMFA)
 	protectedMux.HandleFunc("POST /logout", authHandler.Logout)
@@ -110,6 +122,8 @@ func main() {
 	protectedMux.HandleFunc("POST /properties", propHandler.CreateProperty)
 	protectedMux.HandleFunc("GET /config", configHandler.GetSecurityConfig)
 	protectedMux.HandleFunc("PUT /config", configHandler.UpdateSecurityConfig)
+	protectedMux.HandleFunc("POST /admin/sync", syncHandler.TriggerSync)
+	protectedMux.HandleFunc("GET /sync-status", syncStatusHandler.GetSyncStatus)
 
 	// Aplicar middlewares
 	jwtMiddleware := middleware.JWTMiddleware(authService, cfg.JWTSecret)
@@ -122,6 +136,8 @@ func main() {
 	mux.Handle("/v1/properties", protectedHandler)
 	mux.Handle("/v1/properties/", protectedHandler)
 	mux.Handle("POST /v1/properties", protectedHandler)
+	mux.Handle("POST /v1/admin/sync", protectedHandler)
+	mux.Handle("/v1/sync-status", protectedHandler)
 
 	// Rutas para /v1/config (protegidas, RBAC validado en el handler)
 	mux.Handle("/v1/config", protectedHandler)
@@ -133,6 +149,8 @@ func main() {
 	mux.Handle("/properties", protectedHandler)
 	mux.Handle("/properties/", protectedHandler)
 	mux.Handle("POST /properties", protectedHandler)
+	mux.Handle("POST /admin/sync", protectedHandler)
+	mux.Handle("/sync-status", protectedHandler)
 	mux.Handle("/config", protectedHandler)
 	mux.Handle("/config/", protectedHandler)
 

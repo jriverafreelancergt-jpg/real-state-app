@@ -75,3 +75,149 @@ func (r *propertyRepo) Create(ctx context.Context, property *domain.Property) er
 	}
 	return nil
 }
+
+func (r *propertyRepo) UpsertBatch(ctx context.Context, properties []domain.Property, syncBatchID string) error {
+	if len(properties) == 0 {
+		return nil
+	}
+
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return database.HandleError(ctx, err, "UpsertBatch (begin tx)", "properties", nil)
+	}
+	defer tx.Rollback()
+
+	query := `INSERT INTO properties 
+		(id, title, description, price, currency, address, city, type, bedrooms, bathrooms, area_sqm, lat, lng, main_image, last_sync_id, origin, status) 
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) 
+		ON CONFLICT (id) DO UPDATE SET 
+			title = EXCLUDED.title,
+			description = EXCLUDED.description,
+			price = EXCLUDED.price,
+			currency = EXCLUDED.currency,
+			address = EXCLUDED.address,
+			city = EXCLUDED.city,
+			type = EXCLUDED.type,
+			bedrooms = EXCLUDED.bedrooms,
+			bathrooms = EXCLUDED.bathrooms,
+			area_sqm = EXCLUDED.area_sqm,
+			lat = EXCLUDED.lat,
+			lng = EXCLUDED.lng,
+			main_image = EXCLUDED.main_image,
+			last_sync_id = EXCLUDED.last_sync_id,
+			origin = EXCLUDED.origin,
+			status = EXCLUDED.status,
+			updated_at = CURRENT_TIMESTAMP`
+
+	stmt, err := tx.PrepareContext(ctx, query)
+	if err != nil {
+		return database.HandleError(ctx, err, "UpsertBatch (prepare statement)", "properties", nil)
+	}
+	defer stmt.Close()
+
+	for _, p := range properties {
+		_, err := stmt.ExecContext(ctx,
+			p.ID, p.Title, p.Description, p.Price, p.Currency, p.Address, p.City, p.Type,
+			p.Bedrooms, p.Bathrooms, p.AreaSqM, p.Lat, p.Lng, p.MainImage, syncBatchID, "WASI", "ACTIVE")
+		if err != nil {
+			return database.HandleError(ctx, err, "UpsertBatch (exec)", "properties", map[string]interface{}{"property_id": p.ID})
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return database.HandleError(ctx, err, "UpsertBatch (commit)", "properties", nil)
+	}
+
+	return nil
+}
+
+func (r *propertyRepo) Sweep(ctx context.Context, syncBatchID string, origin string) (int64, error) {
+	query := `UPDATE properties 
+		SET status = 'INACTIVE', updated_at = CURRENT_TIMESTAMP 
+		WHERE origin = $1 AND (last_sync_id IS NULL OR last_sync_id != $2) AND status = 'ACTIVE'`
+
+	res, err := r.db.ExecContext(ctx, query, origin, syncBatchID)
+	if err != nil {
+		return 0, database.HandleError(ctx, err, "Sweep", "properties", map[string]interface{}{"syncBatchID": syncBatchID, "origin": origin})
+	}
+
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return 0, database.HandleError(ctx, err, "Sweep (rows affected)", "properties", nil)
+	}
+
+	return rowsAffected, nil
+}
+
+// GetLastSyncMetadata obtiene los metadatos del último sync completado exitosamente
+func (r *propertyRepo) GetLastSyncMetadata(ctx context.Context) (*domain.SyncMetadata, error) {
+	query := `SELECT id, batch_id, sync_started_at, sync_completed_at, properties_synced, 
+	                properties_deactivated, status, error_message, executed_by, created_at, updated_at
+	          FROM sync_metadata 
+	          WHERE status = 'COMPLETED' 
+	          ORDER BY sync_completed_at DESC LIMIT 1`
+
+	var meta domain.SyncMetadata
+	err := r.db.QueryRowContext(ctx, query).Scan(
+		&meta.ID, &meta.BatchID, &meta.SyncStartedAt, &meta.SyncCompletedAt,
+		&meta.PropertiesSynced, &meta.PropertiesDeactivated, &meta.Status,
+		&meta.ErrorMessage, &meta.ExecutedBy, &meta.CreatedAt, &meta.UpdatedAt,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil // No hay sync previo
+		}
+		return nil, database.HandleError(ctx, err, "GetLastSyncMetadata", "sync_metadata", nil)
+	}
+	return &meta, nil
+}
+
+// CreateSyncMetadata registra el inicio de una nueva sincronización
+func (r *propertyRepo) CreateSyncMetadata(ctx context.Context, batchID string, executedBy *string) error {
+	query := `INSERT INTO sync_metadata (batch_id, status, executed_by) 
+	          VALUES ($1, 'IN_PROGRESS', $2)`
+
+	_, err := r.db.ExecContext(ctx, query, batchID, executedBy)
+	if err != nil {
+		return database.HandleError(ctx, err, "CreateSyncMetadata", "sync_metadata", map[string]interface{}{"batch_id": batchID})
+	}
+	return nil
+}
+
+// CompleteSyncMetadata marca una sincronización como completada exitosamente
+func (r *propertyRepo) CompleteSyncMetadata(ctx context.Context, batchID string, propertiesSynced, propertiesDeactivated int) error {
+	query := `UPDATE sync_metadata 
+	          SET status = 'COMPLETED', sync_completed_at = CURRENT_TIMESTAMP, 
+	              properties_synced = $1, properties_deactivated = $2
+	          WHERE batch_id = $3`
+
+	_, err := r.db.ExecContext(ctx, query, propertiesSynced, propertiesDeactivated, batchID)
+	if err != nil {
+		return database.HandleError(ctx, err, "CompleteSyncMetadata", "sync_metadata", map[string]interface{}{"batch_id": batchID})
+	}
+	return nil
+}
+
+// FailSyncMetadata marca una sincronización como fallida
+func (r *propertyRepo) FailSyncMetadata(ctx context.Context, batchID string, errorMessage string) error {
+	query := `UPDATE sync_metadata 
+	          SET status = 'FAILED', sync_completed_at = CURRENT_TIMESTAMP, error_message = $1
+	          WHERE batch_id = $2`
+
+	_, err := r.db.ExecContext(ctx, query, errorMessage, batchID)
+	if err != nil {
+		return database.HandleError(ctx, err, "FailSyncMetadata", "sync_metadata", map[string]interface{}{"batch_id": batchID})
+	}
+	return nil
+}
+
+// GetActivePropertiesCount retorna el total de propiedades activas
+func (r *propertyRepo) GetActivePropertiesCount(ctx context.Context) (int, error) {
+	var count int
+	query := `SELECT COUNT(*) FROM properties WHERE status = 'ACTIVE'`
+	err := r.db.QueryRowContext(ctx, query).Scan(&count)
+	if err != nil {
+		return 0, database.HandleError(ctx, err, "GetActivePropertiesCount", "properties", nil)
+	}
+	return count, nil
+}

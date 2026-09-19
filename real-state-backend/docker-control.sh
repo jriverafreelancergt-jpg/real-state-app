@@ -67,7 +67,7 @@ case "$1" in
         fi
 
         echo "Levantando la API..."
-        docker-compose -f "$COMPOSE_FILE" up -d --build
+        docker compose -f "$COMPOSE_FILE" up -d --build
         sleep 2
         echo "API corriendo en http://localhost:8080"
 
@@ -80,19 +80,19 @@ case "$1" in
         docker network disconnect "$NETWORK" "$DB_CONTAINER" 2>/dev/null || true
 
         echo "Deteniendo la API..."
-        docker-compose -f "$COMPOSE_FILE" down
+        docker compose -f "$COMPOSE_FILE" down
         echo "API detenida."
         ;;
 
     restart)
         echo "Reiniciando la API..."
-        docker-compose -f "$COMPOSE_FILE" restart
+        docker compose -f "$COMPOSE_FILE" restart
         echo "API reiniciada."
         ;;
 
     logs)
         echo "Mostrando logs de la API..."
-        docker-compose -f "$COMPOSE_FILE" logs -f
+        docker compose -f "$COMPOSE_FILE" logs -f
         ;;
 
     *)

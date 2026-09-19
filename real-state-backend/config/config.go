@@ -11,6 +11,19 @@ import (
 	"time"
 )
 
+// SecretToken representa un token de seguridad sensible.
+// Implementa fmt.Stringer para evitar la impresión accidental de su valor en logs o formatos de texto.
+type SecretToken string
+
+func (s SecretToken) String() string {
+	return "***[REDACTED]***"
+}
+
+// GoString implementa fmt.GoStringer para proteger el valor cuando se usa %#v.
+func (s SecretToken) GoString() string {
+	return `config.SecretToken("***[REDACTED]***")`
+}
+
 type Config struct {
 	ServerPort        string
 	DBUrl             string
@@ -24,6 +37,9 @@ type Config struct {
 	AllowedOrigins    []string
 	RedisAddr         string // Redis address (ej: localhost:6379)
 	CacheTTL          time.Duration
+	WasiBaseURL       string
+	WasiToken         SecretToken
+	WasiCompanyID     string
 }
 
 func LoadConfig() *Config {
@@ -53,8 +69,12 @@ func LoadConfig() *Config {
 		AllowedOrigins:    allowedOrigins,
 		RedisAddr:         getEnv("REDIS_ADDR", "localhost:6379"),
 		CacheTTL:          15 * time.Minute,
+		WasiBaseURL:       getEnv("WASI_BASE_URL", "https://api.wasi.co/v1"),
+		WasiToken:         SecretToken(getEnv("WASI_TOKEN", "")),
+		WasiCompanyID:     getEnv("WASI_COMPANY_ID", ""),
 	}
 }
+
 
 // LoadConfigFromDB carga las configuraciones de seguridad desde la BD
 func LoadConfigFromDB(cfg *Config, db *sql.DB) *Config {

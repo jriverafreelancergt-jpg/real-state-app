@@ -12,7 +12,14 @@ type PropertyRepository interface {
 	GetByID(ctx context.Context, id int64) (*domain.Property, error)
 	GetAll(ctx context.Context, limit, offset int) ([]domain.Property, error)
 	Create(ctx context.Context, property *domain.Property) error
-	// Aquí agregarías métodos de filtro avanzados más adelante
+	UpsertBatch(ctx context.Context, properties []domain.Property, syncBatchID string) error
+	Sweep(ctx context.Context, syncBatchID string, origin string) (int64, error)
+	// Métodos de tracking de sincronización
+	GetLastSyncMetadata(ctx context.Context) (*domain.SyncMetadata, error)
+	CreateSyncMetadata(ctx context.Context, batchID string, executedBy *string) error
+	CompleteSyncMetadata(ctx context.Context, batchID string, propertiesSynced, propertiesDeactivated int) error
+	FailSyncMetadata(ctx context.Context, batchID string, errorMessage string) error
+	GetActivePropertiesCount(ctx context.Context) (int, error)
 }
 
 // PropertyService define la lógica de negocio.
@@ -57,6 +64,11 @@ type SessionRepository interface {
 // AuditRepository define operaciones de BD para auditoría.
 type AuditRepository interface {
 	LogEvent(ctx context.Context, log *domain.AuditLog) error
+}
+
+// SyncStatusProvider define operaciones para obtener estado de sincronización
+type SyncStatusProvider interface {
+	GetSyncStatus(ctx context.Context, freshnessThresholdMinutes int) (*domain.SyncStatus, error)
 }
 
 // SecurityConfigRepository define operaciones de BD para configuración de seguridad.
