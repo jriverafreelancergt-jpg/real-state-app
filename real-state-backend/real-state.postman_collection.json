@@ -1,0 +1,1188 @@
+{
+	"info": {
+		"_postman_id": "d3d4ebf2-0c1d-4d8d-9a1e-78a8bb8c9a12",
+		"name": "Real State API",
+		"description": "Colección oficial de Postman para el backend de bienes raíces. Documenta los endpoints, payloads, headers, query params y respuestas esperadas para la API REST. Incluye scripts automatizados para validación de flujo principal.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8080",
+			"type": "string"
+		},
+		{
+			"key": "bearer_token",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "device_fingerprint",
+			"value": "mobile-device-123",
+			"type": "string"
+		},
+		{
+			"key": "refresh_token",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "property_id",
+			"value": "1",
+			"type": "string"
+		}
+	],
+	"item": [
+		{
+			"name": "Auth",
+			"item": [
+				{
+					"name": "POST /v1/login",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {\n  pm.response.to.have.status(200);\n});",
+									"pm.test(\"Response has success status\", function () {\n  const json = pm.response.json();\n  pm.expect(json.status).to.eql('success');\n  pm.expect(json.data.authentication.access_token).to.be.a('string');\n  pm.expect(json.data.authentication.refresh_token).to.be.a('string');\n  pm.environment.set('bearer_token', json.data.authentication.access_token);\n  pm.environment.set('refresh_token', json.data.authentication.refresh_token);\n});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							},
+							{
+								"key": "X-Device-Fingerprint",
+								"value": "{{device_fingerprint}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"username\": \"admin\",\n  \"password\": \"admin123\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/login",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v1",
+								"login"
+							]
+						},
+						"description": "Propósito: autenticar a un usuario y devolver access_token + refresh_token.\n\nParámetros requeridos:\n- username: string requerido\n- password: string requerido\n\nHeaders recomendados:\n- Content-Type: application/json\n- X-Device-Fingerprint: identificador estable del dispositivo\n\nPayload exitoso:\n{\n  \"username\": \"admin\",\n  \"password\": \"admin123\"\n}\n\nRespuestas esperadas:\n- 200 OK: autenticación exitosa, devuelve tokens y datos del usuario\n- 400 Bad Request: JSON inválido o campos vacíos\n- 401 Unauthorized: credenciales inválidas o sesión no válida"
+					},
+					"response": []
+				},
+				{
+					"name": "POST /v1/refresh",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {\n  pm.response.to.have.status(200);\n});",
+									"pm.test(\"Refresh returns valid token\", function () {\n  const json = pm.response.json();\n  pm.expect(json.access_token).to.be.a('string');\n  pm.expect(json.token_type).to.eql('Bearer');\n  pm.environment.set('bearer_token', json.access_token);\n});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							},
+							{
+								"key": "X-Device-Fingerprint",
+								"value": "{{device_fingerprint}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"refresh_token\": \"{{refresh_token}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/refresh",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v1",
+								"refresh"
+							]
+						},
+						"description": "Propósito: renovar el access token usando un refresh token válido.\n\nParámetros requeridos:\n- refresh_token: string obligatorio\n\nHeaders recomendados:\n- Content-Type: application/json\n- X-Device-Fingerprint: mismo dispositivo asociado a la sesión\n\nPayload exitoso:\n{\n  \"refresh_token\": \"{{refresh_token}}\"\n}\n\nRespuestas esperadas:\n- 200 OK: nuevos tokens emitidos\n- 400 Bad Request: JSON inválido\n- 401 Unauthorized: token de refresco inválido, expirado o sesión no válida"
+					},
+					"response": []
+				},
+				{
+					"name": "POST /v1/verify-mfa",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{bearer_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							},
+							{
+								"key": "X-Device-Fingerprint",
+								"value": "{{device_fingerprint}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"code\": \"123456\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/verify-mfa",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v1",
+								"verify-mfa"
+							]
+						},
+						"description": "Propósito: verificar el código MFA del usuario autenticado.\n\nParámetros requeridos:\n- code: string con el código de verificación\n\nAutenticación:\n- Authorization: Bearer {{bearer_token}}\n\nPayload exitoso:\n{\n  \"code\": \"123456\"\n}\n\nRespuestas esperadas:\n- 200 OK: MFA verificado correctamente\n- 400 Bad Request: JSON inválido\n- 401 Unauthorized: token o sesión inválida\n- 403 Forbidden: no posee permisos o mecanismo MFA no válido"
+					},
+					"response": []
+				},
+				{
+					"name": "POST /v1/logout",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{bearer_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "X-Device-Fingerprint",
+								"value": "{{device_fingerprint}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/logout",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v1",
+								"logout"
+							]
+						},
+						"description": "Propósito: cerrar la sesión activa revocando el JTI asociado al token actual.\n\nAutenticación:\n- Authorization: Bearer {{bearer_token}}\n\nHeaders recomendados:\n- X-Device-Fingerprint: requerido para consistencia de dispositivo\n\nRespuestas esperadas:\n- 200 OK: sesión cerrada con éxito\n- 401 Unauthorized: token inválido o expirado"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Properties",
+			"event": [
+				{
+					"listen": "prerequest",
+					"script": {
+						"type": "text/javascript",
+						"exec": [
+							"const deviceFingerprint = pm.environment.get('device_fingerprint') || 'mobile-device-123';",
+							"pm.environment.set('device_fingerprint', deviceFingerprint);",
+							"if (!pm.environment.get('bearer_token')) {",
+							"  const baseUrl = (pm.environment.get('base_url') || 'http://localhost:8080').replace(/\\/$/, '');",
+							"  const username = pm.environment.get('username') || 'admin';",
+							"  const password = pm.environment.get('password') || 'admin123';",
+							"  pm.sendRequest({",
+							"    url: baseUrl + '/v1/login',",
+							"    method: 'POST',",
+							"    header: { 'Content-Type': 'application/json', 'X-Device-Fingerprint': deviceFingerprint },",
+							"    body: { mode: 'raw', raw: JSON.stringify({ username, password }) }",
+							"  }, function (err, response) {",
+							"    if (err) { throw new Error('Auto-login failed: ' + err.message); }",
+							"    if (response.code !== 200) { throw new Error('Auto-login failed with status ' + response.code); }",
+							"    const json = response.json();",
+							"    const accessToken = json.data && json.data.authentication && json.data.authentication.access_token;",
+							"    const refreshToken = json.data && json.data.authentication && json.data.authentication.refresh_token;",
+							"    if (!accessToken || !refreshToken) { throw new Error('Auto-login response is missing tokens'); }",
+							"    pm.environment.set('bearer_token', accessToken);",
+							"    pm.environment.set('refresh_token', refreshToken);",
+							"  });",
+							"}",
+							"if (!pm.environment.get('bearer_token')) { throw new Error('No bearer token available'); }",
+							"pm.request.headers.upsert({ key: 'Authorization', value: 'Bearer ' + pm.environment.get('bearer_token') });",
+							"pm.request.headers.upsert({ key: 'X-Device-Fingerprint', value: deviceFingerprint });"
+						]
+					}
+				}
+			],
+			"item": [
+				{
+					"name": "GET /v1/properties",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {\n  pm.response.to.have.status(200);\n});",
+									"pm.test(\"Response is an array\", function () {\n  const json = pm.response.json();\n  pm.expect(json).to.be.an('array');\n});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{bearer_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-Device-Fingerprint",
+								"value": "{{device_fingerprint}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/v1/properties?page=1&limit=10",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v1",
+								"properties"
+							],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "10"
+								}
+							]
+						},
+						"description": "Propósito: listar propiedades con paginación.\n\nParámetros opcionales:\n- page: número de página, valor mínimo 1 (por defecto 1)\n- limit: tamaño de página, rango 1-100 (por defecto 10)\n\nAutenticación:\n- Authorization: Bearer {{bearer_token}}\n\nRespuestas esperadas:\n- 200 OK: lista de propiedades\n- 401 Unauthorized: token ausente o inválido\n- 500 Internal Server Error: error de base de datos o servicio"
+					},
+					"response": []
+				},
+				{
+					"name": "GET /v1/properties/{id}",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{bearer_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-Device-Fingerprint",
+								"value": "{{device_fingerprint}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/v1/properties/{{property_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v1",
+								"properties",
+								"{{property_id}}"
+							]
+						},
+						"description": "Propósito: obtener una propiedad específica por su identificador.\n\nParámetros requeridos:\n- id: identificador numérico de la propiedad\n\nAutenticación:\n- Authorization: Bearer {{bearer_token}}\n\nRespuestas esperadas:\n- 200 OK: propiedad encontrada\n- 400 Bad Request: ID inválido\n- 401 Unauthorized: token o sesión no válidos\n- 404 Not Found: propiedad no existe"
+					},
+					"response": []
+				},
+				{
+					"name": "POST /v1/properties",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 201\", function () {\n  pm.response.to.have.status(201);\n});",
+									"pm.test(\"Property created successfully\", function () {\n  const json = pm.response.json();\n  pm.expect(json.title).to.be.a('string');\n  pm.expect(json.price).to.be.a('number');\n  if (json.id) {\n    pm.environment.set('property_id', String(json.id));\n  }\n});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{bearer_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							},
+							{
+								"key": "X-Device-Fingerprint",
+								"value": "{{device_fingerprint}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"title\": \"Casa Moderna en Zona 10\",\n  \"description\": \"Hermosa casa de 3 habitaciones con jardín privado, piscina y buen acceso.\",\n  \"price\": 250000.00,\n  \"currency\": \"USD\",\n  \"location\": \"Guatemala City, Zona 10\",\n  \"type\": \"Casa\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/properties",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v1",
+								"properties"
+							]
+						},
+						"description": "Propósito: registrar una nueva propiedad en el sistema.\n\nParámetros requeridos:\n- title: texto obligatorio, mínimo 3 caracteres\n- description: texto opcional pero recomendable\n- price: número positivo\n- currency: USD o GTQ\n- location: dirección o ubicación\n- type: Casa, Apartamento, Terreno u Oficina\n\nAutenticación:\n- Authorization: Bearer {{bearer_token}}\n\nPayload exitoso:\n{\n  \"title\": \"Casa Moderna en Zona 10\",\n  \"description\": \"Hermosa casa...\",\n  \"price\": 250000.00,\n  \"currency\": \"USD\",\n  \"location\": \"Guatemala City, Zona 10\",\n  \"type\": \"Casa\"\n}\n\nRespuestas esperadas:\n- 201 Created: propiedad creada correctamente\n- 400 Bad Request: JSON inválido\n- 401 Unauthorized: token o sesión no validos\n- 422 Unprocessable Entity: validación fallida (currency, type, price o title)"
+					},
+					"response": []
+				},
+				{
+					"name": "POST /v1/properties (validación inválida)",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{bearer_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"title\": \"AB\",\n  \"description\": \"Prueba de validación\",\n  \"price\": 0,\n  \"currency\": \"EUR\",\n  \"location\": \"Ciudad\",\n  \"type\": \"house\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/properties",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v1",
+								"properties"
+							]
+						},
+						"description": "Ejemplo de validación de negocio: payload con errores típicos (título corto, precio no positivo, moneda no soportada y tipo inválido).\n\nDebe responder con 422 Unprocessable Entity y un mensaje claro de validación."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Config",
+			"event": [
+				{
+					"listen": "prerequest",
+					"script": {
+						"type": "text/javascript",
+						"exec": [
+							"const deviceFingerprint = pm.environment.get('device_fingerprint') || 'mobile-device-123';",
+							"pm.environment.set('device_fingerprint', deviceFingerprint);",
+							"if (!pm.environment.get('bearer_token')) {",
+							"  const baseUrl = (pm.environment.get('base_url') || 'http://localhost:8080').replace(/\\/$/, '');",
+							"  const username = pm.environment.get('username') || 'admin';",
+							"  const password = pm.environment.get('password') || 'admin123';",
+							"  pm.sendRequest({",
+							"    url: baseUrl + '/v1/login',",
+							"    method: 'POST',",
+							"    header: { 'Content-Type': 'application/json', 'X-Device-Fingerprint': deviceFingerprint },",
+							"    body: { mode: 'raw', raw: JSON.stringify({ username, password }) }",
+							"  }, function (err, response) {",
+							"    if (err) { throw new Error('Auto-login failed: ' + err.message); }",
+							"    if (response.code !== 200) { throw new Error('Auto-login failed with status ' + response.code); }",
+							"    const json = response.json();",
+							"    const accessToken = json.data && json.data.authentication && json.data.authentication.access_token;",
+							"    const refreshToken = json.data && json.data.authentication && json.data.authentication.refresh_token;",
+							"    if (!accessToken || !refreshToken) { throw new Error('Auto-login response is missing tokens'); }",
+							"    pm.environment.set('bearer_token', accessToken);",
+							"    pm.environment.set('refresh_token', refreshToken);",
+							"  });",
+							"}",
+							"if (!pm.environment.get('bearer_token')) { throw new Error('No bearer token available'); }",
+							"pm.request.headers.upsert({ key: 'Authorization', value: 'Bearer ' + pm.environment.get('bearer_token') });",
+							"pm.request.headers.upsert({ key: 'X-Device-Fingerprint', value: deviceFingerprint });"
+						]
+					}
+				}
+			],
+			"item": [
+				{
+					"name": "GET /v1/config",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {\n  pm.response.to.have.status(200);\n});",
+									"pm.test(\"Config payload is object\", function () {\n  const json = pm.response.json();\n  pm.expect(json).to.be.an('object');\n  pm.expect(json).to.have.property('ACCESS_TOKEN_TTL_MINUTES');\n});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{bearer_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-Device-Fingerprint",
+								"value": "{{device_fingerprint}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/v1/config",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v1",
+								"config"
+							]
+						},
+						"description": "Propósito: consultar la configuración global de seguridad del sistema.\n\nAutenticación:\n- Authorization: Bearer {{bearer_token}}\n\nRespuestas esperadas:\n- 200 OK: devuelve valores actuales (TTL, max failed attempts, lockout, etc.)\n- 401 Unauthorized: token inválido\n- 403 Forbidden: sin permisos para administrar seguridad (si se aplica control extra)"
+					},
+					"response": []
+				},
+				{
+					"name": "PUT /v1/config",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {\n  pm.response.to.have.status(200);\n});",
+									"pm.test(\"Update config returns success body\", function () {\n  const json = pm.response.json();\n  pm.expect(json.message).to.include('Config updated successfully');\n});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{bearer_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							},
+							{
+								"key": "X-Device-Fingerprint",
+								"value": "{{device_fingerprint}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"key\": \"ACCESS_TOKEN_TTL_MINUTES\",\n  \"value\": 15\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/config",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v1",
+								"config"
+							]
+						},
+						"description": "Propósito: actualizar una configuración del sistema con validación de clave y rango.\n\nParámetros requeridos:\n- key: una de: ACCESS_TOKEN_TTL_MINUTES, REFRESH_TOKEN_TTL_DAYS, MAX_FAILED_ATTEMPTS, LOCKOUT_DURATION_MINUTES\n- value: número entero válido según la clave\n\nAutenticación:\n- Authorization: Bearer {{bearer_token}}\n\nPayload exitoso:\n{\n  \"key\": \"ACCESS_TOKEN_TTL_MINUTES\",\n  \"value\": 15\n}\n\nRespuestas esperadas:\n- 200 OK: configuración actualizada\n- 400 Bad Request: clave inválida, JSON inválido o valor fuera de rango\n- 401 Unauthorized: token inválido\n- 403 Forbidden: sin el permiso manage_security_config"
+					},
+					"response": []
+				},
+				{
+					"name": "PUT /v1/config (validación inválida)",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{bearer_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"key\": \"INVALID_KEY\",\n  \"value\": 9999\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/config",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v1",
+								"config"
+							]
+						},
+						"description": "Ejemplo de validación de configuración: clave inexistente o valor fuera de rango.\n\nDebe responder con 400 Bad Request y una descripción del error."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Sync & Monitoring",
+			"event": [
+				{
+					"listen": "prerequest",
+					"script": {
+						"type": "text/javascript",
+						"exec": [
+							"const deviceFingerprint = pm.environment.get('device_fingerprint') || 'mobile-device-123';",
+							"pm.environment.set('device_fingerprint', deviceFingerprint);",
+							"if (!pm.environment.get('bearer_token')) {",
+							"  const baseUrl = (pm.environment.get('base_url') || 'http://localhost:8080').replace(/\\/$/, '');",
+							"  const username = pm.environment.get('username') || 'admin';",
+							"  const password = pm.environment.get('password') || 'admin123';",
+							"  pm.sendRequest({",
+							"    url: baseUrl + '/v1/login',",
+							"    method: 'POST',",
+							"    header: { 'Content-Type': 'application/json', 'X-Device-Fingerprint': deviceFingerprint },",
+							"    body: { mode: 'raw', raw: JSON.stringify({ username, password }) }",
+							"  }, function (err, response) {",
+							"    if (err) { throw new Error('Auto-login failed: ' + err.message); }",
+							"    if (response.code !== 200) { throw new Error('Auto-login failed with status ' + response.code); }",
+							"    const json = response.json();",
+							"    const accessToken = json.data && json.data.authentication && json.data.authentication.access_token;",
+							"    const refreshToken = json.data && json.data.authentication && json.data.authentication.refresh_token;",
+							"    if (!accessToken || !refreshToken) { throw new Error('Auto-login response is missing tokens'); }",
+							"    pm.environment.set('bearer_token', accessToken);",
+							"    pm.environment.set('refresh_token', refreshToken);",
+							"  });",
+							"}",
+							"if (!pm.environment.get('bearer_token')) { throw new Error('No bearer token available'); }",
+							"pm.request.headers.upsert({ key: 'Authorization', value: 'Bearer ' + pm.environment.get('bearer_token') });",
+							"pm.request.headers.upsert({ key: 'X-Device-Fingerprint', value: deviceFingerprint });"
+						]
+					}
+				}
+			],
+			"item": [
+				{
+					"name": "POST /v1/admin/sync",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {\n  pm.response.to.have.status(200);\n});",
+									"pm.test(\"Sync success response\", function () {\n  const json = pm.response.json();\n  pm.expect(json.status).to.eql('success');\n});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{bearer_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							},
+							{
+								"key": "X-Device-Fingerprint",
+								"value": "{{device_fingerprint}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/admin/sync",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v1",
+								"admin",
+								"sync"
+							]
+						},
+						"description": "Propósito: ejecutar una sincronización manual con Wasi para actualizar propiedades y reconciliar datos locales.\n\nAutenticación:\n- Authorization: Bearer {{bearer_token}}\n\nPayload:\n- Actualmente el endpoint no exige body; se puede enviar {} o vacío.\n\nRespuestas esperadas:\n- 200 OK: sincronización finalizada con éxito\n- 401 Unauthorized: token inválido\n- 500 Internal Server Error: error en la sincronización con Wasi"
+					},
+					"response": []
+				},
+				{
+					"name": "GET /v1/sync-status",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {\n  pm.response.to.have.status(200);\n});",
+									"pm.test(\"Sync status is valid object\", function () {\n  const json = pm.response.json();\n  pm.expect(json).to.be.an('object');\n  pm.expect(json).to.have.property('properties_count');\n});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{bearer_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-Device-Fingerprint",
+								"value": "{{device_fingerprint}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/v1/sync-status",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v1",
+								"sync-status"
+							]
+						},
+						"description": "Propósito: consultar el estado de última sincronización y la frescura de los datos.\n\nAutenticación:\n- Authorization: Bearer {{bearer_token}}\n\nRespuestas esperadas:\n- 200 OK: devuelve metadatos de sincronización y freshness\n- 401 Unauthorized: token inválido\n- 500 Internal Server Error: error ejecutando la consulta de estado"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Compatibility Routes",
+			"event": [
+				{
+					"listen": "prerequest",
+					"script": {
+						"type": "text/javascript",
+						"exec": [
+							"const requestName = (pm.info.requestName || '').toLowerCase();",
+							"if (requestName.includes('login') || requestName.includes('refresh')) { return; }",
+							"const deviceFingerprint = pm.environment.get('device_fingerprint') || 'mobile-device-123';",
+							"pm.environment.set('device_fingerprint', deviceFingerprint);",
+							"if (!pm.environment.get('bearer_token')) {",
+							"  const baseUrl = (pm.environment.get('base_url') || 'http://localhost:8080').replace(/\\/$/, '');",
+							"  const username = pm.environment.get('username') || 'admin';",
+							"  const password = pm.environment.get('password') || 'admin123';",
+							"  pm.sendRequest({",
+							"    url: baseUrl + '/v1/login',",
+							"    method: 'POST',",
+							"    header: { 'Content-Type': 'application/json', 'X-Device-Fingerprint': deviceFingerprint },",
+							"    body: { mode: 'raw', raw: JSON.stringify({ username, password }) }",
+							"  }, function (err, response) {",
+							"    if (err) { throw new Error('Auto-login failed: ' + err.message); }",
+							"    if (response.code !== 200) { throw new Error('Auto-login failed with status ' + response.code); }",
+							"    const json = response.json();",
+							"    const accessToken = json.data && json.data.authentication && json.data.authentication.access_token;",
+							"    const refreshToken = json.data && json.data.authentication && json.data.authentication.refresh_token;",
+							"    if (!accessToken || !refreshToken) { throw new Error('Auto-login response is missing tokens'); }",
+							"    pm.environment.set('bearer_token', accessToken);",
+							"    pm.environment.set('refresh_token', refreshToken);",
+							"    pm.request.headers.upsert({ key: 'Authorization', value: 'Bearer ' + accessToken });",
+							"    pm.request.headers.upsert({ key: 'X-Device-Fingerprint', value: deviceFingerprint });",
+							"  });",
+							"}",
+							"if (!pm.environment.get('bearer_token')) { throw new Error('No bearer token available'); }",
+							"pm.request.headers.upsert({ key: 'Authorization', value: 'Bearer ' + pm.environment.get('bearer_token') });",
+							"pm.request.headers.upsert({ key: 'X-Device-Fingerprint', value: deviceFingerprint });"
+						]
+					}
+				}
+			],
+			"item": [
+				{
+					"name": "POST /login",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							},
+							{
+								"key": "X-Device-Fingerprint",
+								"value": "{{device_fingerprint}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"username\": \"admin\",\n  \"password\": \"admin123\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/login",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"login"
+							]
+						},
+						"description": "Ruta legacy sin versión. Tiene el mismo comportamiento que /v1/login. Útil para compatibilidad con clientes antiguos."
+					},
+					"response": []
+				},
+				{
+					"name": "POST /refresh",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"refresh_token\": \"{{refresh_token}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/refresh",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"refresh"
+							]
+						},
+						"description": "Ruta legacy sin versión. Equivalente a /v1/refresh."
+					},
+					"response": []
+				},
+				{
+					"name": "GET /properties",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{bearer_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-Device-Fingerprint",
+								"value": "{{device_fingerprint}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/properties?page=1&limit=10",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"properties"
+							],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "10"
+								}
+							]
+						},
+						"description": "Ruta legacy sin versión. Equivalente a GET /v1/properties."
+					},
+					"response": []
+				},
+				{
+					"name": "POST /properties",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{bearer_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							},
+							{
+								"key": "X-Device-Fingerprint",
+								"value": "{{device_fingerprint}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"title\": \"Apartament en Antigua\",\n  \"description\": \"Apartamento moderno en Antigua Guatemala\",\n  \"price\": 180000,\n  \"currency\": \"GTQ\",\n  \"location\": \"Antigua Guatemala\",\n  \"type\": \"Apartamento\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/properties",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"properties"
+							]
+						},
+						"description": "Ruta legacy sin versión. Equivalente a POST /v1/properties."
+					},
+					"response": []
+				},
+				{
+					"name": "GET /config",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{bearer_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-Device-Fingerprint",
+								"value": "{{device_fingerprint}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/config",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"config"
+							]
+						},
+						"description": "Ruta legacy sin versión. Equivalente a GET /v1/config."
+					},
+					"response": []
+				},
+				{
+					"name": "PUT /config",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{bearer_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							},
+							{
+								"key": "X-Device-Fingerprint",
+								"value": "{{device_fingerprint}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"key\": \"MAX_FAILED_ATTEMPTS\",\n  \"value\": 5\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/config",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"config"
+							]
+						},
+						"description": "Ruta legacy sin versión. Equivalente a PUT /v1/config."
+					},
+					"response": []
+				},
+				{
+					"name": "GET /sync-status",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{bearer_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-Device-Fingerprint",
+								"value": "{{device_fingerprint}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/sync-status",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"sync-status"
+							]
+						},
+						"description": "Ruta legacy sin versión. Equivalente a GET /v1/sync-status."
+					},
+					"response": []
+				},
+				{
+					"name": "POST /admin/sync",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{bearer_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							},
+							{
+								"key": "X-Device-Fingerprint",
+								"value": "{{device_fingerprint}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/admin/sync",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"admin",
+								"sync"
+							]
+						},
+						"description": "Ruta legacy sin versión. Equivalente a POST /v1/admin/sync."
+					},
+					"response": []
+				}
+			]
+		}
+	]
+}

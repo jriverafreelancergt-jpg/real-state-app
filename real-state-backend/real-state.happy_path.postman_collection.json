@@ -1,0 +1,378 @@
+{
+  "info": {
+    "_postman_id": "6cbb9559-fc3d-4b79-a292-2d4be445e1ba",
+    "name": "Real State API - Happy Path",
+    "description": "Suite secuencial de pruebas del flujo principal: login, refresh, consulta de configuración, creación de propiedad, consulta y sincronización. Diseñada para ejecutarse en orden mediante el Runner de Postman.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "username",
+      "value": "admin",
+      "type": "string"
+    },
+    {
+      "key": "password",
+      "value": "admin123",
+      "type": "string"
+    },
+    {
+      "key": "device_fingerprint",
+      "value": "mobile-device-123",
+      "type": "string"
+    },
+    {
+      "key": "bearer_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "refresh_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "property_id",
+      "value": "1",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Happy Path (Sequential)",
+      "item": [
+        {
+          "name": "01 - Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test(\"Has access token\", function () { pm.expect(json.data.authentication.access_token).to.be.a('string'); });",
+                  "pm.test(\"Has refresh token\", function () { pm.expect(json.data.authentication.refresh_token).to.be.a('string'); });",
+                  "pm.environment.set('bearer_token', json.data.authentication.access_token);",
+                  "pm.environment.set('refresh_token', json.data.authentication.refresh_token);",
+                  "postman.setNextRequest('02 - Refresh token');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json", "type": "text" },
+              { "key": "X-Device-Fingerprint", "value": "{{device_fingerprint}}", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{username}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/login",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "login"]
+            }
+          }
+        },
+        {
+          "name": "02 - Refresh token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test(\"Response includes access token\", function () { pm.expect(json.access_token).to.be.a('string'); });",
+                  "pm.environment.set('bearer_token', json.access_token);",
+                  "postman.setNextRequest('03 - Get config');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json", "type": "text" },
+              { "key": "X-Device-Fingerprint", "value": "{{device_fingerprint}}", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh_token\": \"{{refresh_token}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/refresh",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "refresh"]
+            }
+          }
+        },
+        {
+          "name": "03 - Get config",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test(\"Config object returned\", function () { pm.expect(json).to.be.an('object'); });",
+                  "postman.setNextRequest('04 - Create property');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{bearer_token}}", "type": "string" }
+              ]
+            },
+            "method": "GET",
+            "header": [
+              { "key": "X-Device-Fingerprint", "value": "{{device_fingerprint}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/config",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "config"]
+            }
+          }
+        },
+        {
+          "name": "04 - Create property",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 201\", function () { pm.response.to.have.status(201); });",
+                  "const json = pm.response.json();",
+                  "pm.test(\"Property created\", function () { pm.expect(json.title).to.be.a('string'); });",
+                  "if (json.id) { pm.environment.set('property_id', String(json.id)); }",
+                  "postman.setNextRequest('05 - Get properties');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{bearer_token}}", "type": "string" }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json", "type": "text" },
+              { "key": "X-Device-Fingerprint", "value": "{{device_fingerprint}}", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Casa Happy Path\",\n  \"description\": \"Propiedad creada en la suite secuencial del flujo principal.\",\n  \"price\": 245000.00,\n  \"currency\": \"USD\",\n  \"location\": \"Guatemala City, Zona 10\",\n  \"type\": \"Casa\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/properties",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "properties"]
+            }
+          }
+        },
+        {
+          "name": "05 - Get properties",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test(\"List returned\", function () { pm.expect(json).to.be.an('array'); });",
+                  "postman.setNextRequest('06 - Get property by id');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{bearer_token}}", "type": "string" }
+              ]
+            },
+            "method": "GET",
+            "header": [
+              { "key": "X-Device-Fingerprint", "value": "{{device_fingerprint}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/properties?page=1&limit=10",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "properties"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "10" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "06 - Get property by id",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test(\"Property includes id\", function () { pm.expect(json.id || json.property_id).to.exist; });",
+                  "postman.setNextRequest('07 - Trigger sync');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{bearer_token}}", "type": "string" }
+              ]
+            },
+            "method": "GET",
+            "header": [
+              { "key": "X-Device-Fingerprint", "value": "{{device_fingerprint}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/properties/{{property_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "properties", "{{property_id}}"]
+            }
+          }
+        },
+        {
+          "name": "07 - Trigger sync",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test(\"Sync response valid\", function () { pm.expect(json).to.be.an('object'); });",
+                  "postman.setNextRequest('08 - Get sync status');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{bearer_token}}", "type": "string" }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json", "type": "text" },
+              { "key": "X-Device-Fingerprint", "value": "{{device_fingerprint}}", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/admin/sync",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "admin", "sync"]
+            }
+          }
+        },
+        {
+          "name": "08 - Get sync status",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test(\"Status payload valid\", function () { pm.expect(json).to.be.an('object'); });",
+                  "postman.setNextRequest('09 - Logout');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{bearer_token}}", "type": "string" }
+              ]
+            },
+            "method": "GET",
+            "header": [
+              { "key": "X-Device-Fingerprint", "value": "{{device_fingerprint}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/sync-status",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "sync-status"]
+            }
+          }
+        },
+        {
+          "name": "09 - Logout",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.environment.set('bearer_token', '');",
+                  "pm.environment.set('refresh_token', '');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{bearer_token}}", "type": "string" }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "X-Device-Fingerprint", "value": "{{device_fingerprint}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/logout",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "logout"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

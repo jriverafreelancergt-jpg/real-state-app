@@ -1,0 +1,16 @@
+stages:
+  - qa
+
+postman_qa:
+  stage: qa
+  image: node:20
+  script:
+    - npm install -g newman
+    - newman run "real-state.happy_path.postman_collection.json" -e "real-state.postman_environment.json" --reporters cli,json --reporter-json-export "newman-report.json"
+  artifacts:
+    when: always
+    paths:
+      - newman-report.json
+  only:
+    - main
+    - merge_requests

@@ -1,0 +1,48 @@
+name: Postman API QA
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  newman:
+    runs-on: ubuntu-latest
+
+    services:
+      api:
+        image: node:20
+        ports:
+          - 8080:8080
+        options: >-
+          --health-cmd "curl -f http://localhost:8080 || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Newman
+        run: npm install -g newman
+
+      - name: Run Happy Path collection
+        run: |
+          newman run "real-state.happy_path.postman_collection.json" \
+            -e "real-state.postman_environment.json" \
+            --reporters cli,json \
+            --reporter-json-export "newman-report.json"
+
+      - name: Upload report
+        uses: actions/upload-artifact@v4
+        with:
+          name: newman-report
+          path: newman-report.json
