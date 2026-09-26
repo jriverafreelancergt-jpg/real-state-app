@@ -22,6 +22,8 @@ type mockPropertyRepository struct {
 	GetByIDFunc                  func(ctx context.Context, id int64) (*domain.Property, error)
 	GetAllFunc                   func(ctx context.Context, limit, offset int) ([]domain.Property, error)
 	CreateFunc                   func(ctx context.Context, property *domain.Property) error
+	UpdateFunc                   func(ctx context.Context, id int64, property *domain.Property) (*domain.Property, error)
+	DeleteFunc                   func(ctx context.Context, id int64) error
 	UpsertBatchFunc              func(ctx context.Context, properties []domain.Property, syncBatchID string) error
 	SweepFunc                    func(ctx context.Context, syncBatchID string, origin string) (int64, error)
 	GetLastSyncMetadataFunc      func(ctx context.Context) (*domain.SyncMetadata, error)
@@ -29,6 +31,8 @@ type mockPropertyRepository struct {
 	CompleteSyncMetadataFunc     func(ctx context.Context, batchID string, propertiesSynced, propertiesDeactivated int) error
 	FailSyncMetadataFunc         func(ctx context.Context, batchID string, errorMessage string) error
 	GetActivePropertiesCountFunc func(ctx context.Context) (int, error)
+	SetMainImageFunc             func(ctx context.Context, id int64, url string) error
+	UploadPropertyMediaFunc      func(ctx context.Context, propertyID int64, url string, mediaType string, isPrimary bool) (*domain.PropertyMedia, error)
 }
 
 func (m *mockPropertyRepository) GetByID(ctx context.Context, id int64) (*domain.Property, error) {
@@ -39,6 +43,18 @@ func (m *mockPropertyRepository) GetAll(ctx context.Context, limit, offset int) 
 }
 func (m *mockPropertyRepository) Create(ctx context.Context, property *domain.Property) error {
 	return m.CreateFunc(ctx, property)
+}
+func (m *mockPropertyRepository) Update(ctx context.Context, id int64, property *domain.Property) (*domain.Property, error) {
+	if m.UpdateFunc != nil {
+		return m.UpdateFunc(ctx, id, property)
+	}
+	return property, nil
+}
+func (m *mockPropertyRepository) Delete(ctx context.Context, id int64) error {
+	if m.DeleteFunc != nil {
+		return m.DeleteFunc(ctx, id)
+	}
+	return nil
 }
 func (m *mockPropertyRepository) UpsertBatch(ctx context.Context, properties []domain.Property, syncBatchID string) error {
 	return m.UpsertBatchFunc(ctx, properties, syncBatchID)
@@ -75,6 +91,18 @@ func (m *mockPropertyRepository) GetActivePropertiesCount(ctx context.Context) (
 		return m.GetActivePropertiesCountFunc(ctx)
 	}
 	return 0, nil
+}
+func (m *mockPropertyRepository) SetMainImage(ctx context.Context, id int64, url string) error {
+	if m.SetMainImageFunc != nil {
+		return m.SetMainImageFunc(ctx, id, url)
+	}
+	return nil
+}
+func (m *mockPropertyRepository) UploadPropertyMedia(ctx context.Context, propertyID int64, url string, mediaType string, isPrimary bool) (*domain.PropertyMedia, error) {
+	if m.UploadPropertyMediaFunc != nil {
+		return m.UploadPropertyMediaFunc(ctx, propertyID, url, mediaType, isPrimary)
+	}
+	return &domain.PropertyMedia{PropertyID: propertyID, URL: url, Type: mediaType, IsPrimary: isPrimary}, nil
 }
 
 func TestSyncAllProperties_Success(t *testing.T) {

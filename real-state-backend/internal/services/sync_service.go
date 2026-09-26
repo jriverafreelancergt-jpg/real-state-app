@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -51,7 +52,7 @@ func (s *PropertySyncService) SyncAllProperties(ctx context.Context) error {
 	if err != nil {
 		errMsg := fmt.Sprintf("error al obtener la primera página de Wasi: %v", err)
 		_ = s.repo.FailSyncMetadata(ctx, syncBatchID, errMsg)
-		return fmt.Errorf(errMsg)
+		return errors.New(errMsg)
 	}
 
 	if len(firstBatch) == 0 || totalPages == 0 {
@@ -118,7 +119,7 @@ func (s *PropertySyncService) SyncAllProperties(ctx context.Context) error {
 	if err := s.repo.UpsertBatch(ctx, firstBatch, syncBatchID); err != nil {
 		errMsg := fmt.Sprintf("error al guardar lote inicial: %v", err)
 		_ = s.repo.FailSyncMetadata(ctx, syncBatchID, errMsg)
-		return fmt.Errorf(errMsg)
+		return errors.New(errMsg)
 	}
 
 	// 6. Recibir y guardar resultados a medida que se completen las descargas
@@ -154,7 +155,7 @@ func (s *PropertySyncService) SyncAllProperties(ctx context.Context) error {
 	if syncErr != nil {
 		errMsg := fmt.Sprintf("sincronización fallida o interrumpida. Se omitirá el barrido (Sweep): %v", syncErr)
 		_ = s.repo.FailSyncMetadata(ctx, syncBatchID, errMsg)
-		return fmt.Errorf(errMsg)
+		return errors.New(errMsg)
 	}
 
 	// 8. Fase de Reconciliación ("Sweep"): Desactivar inmuebles que ya no existen en Wasi
@@ -162,7 +163,7 @@ func (s *PropertySyncService) SyncAllProperties(ctx context.Context) error {
 	if err != nil {
 		errMsg := fmt.Sprintf("error durante la reconciliación (Sweep): %v", err)
 		_ = s.repo.FailSyncMetadata(ctx, syncBatchID, errMsg)
-		return fmt.Errorf(errMsg)
+		return errors.New(errMsg)
 	}
 
 	// 9. Marcar sincronización como completada en metadatos

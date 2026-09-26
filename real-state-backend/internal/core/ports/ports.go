@@ -12,6 +12,10 @@ type PropertyRepository interface {
 	GetByID(ctx context.Context, id int64) (*domain.Property, error)
 	GetAll(ctx context.Context, limit, offset int) ([]domain.Property, error)
 	Create(ctx context.Context, property *domain.Property) error
+	Update(ctx context.Context, id int64, property *domain.Property) (*domain.Property, error)
+	Delete(ctx context.Context, id int64) error
+	SetMainImage(ctx context.Context, id int64, url string) error
+	UploadPropertyMedia(ctx context.Context, propertyID int64, url string, mediaType string, isPrimary bool) (*domain.PropertyMedia, error)
 	UpsertBatch(ctx context.Context, properties []domain.Property, syncBatchID string) error
 	Sweep(ctx context.Context, syncBatchID string, origin string) (int64, error)
 	// Métodos de tracking de sincronización
@@ -27,6 +31,9 @@ type PropertyService interface {
 	GetProperty(ctx context.Context, id int64) (*domain.Property, error)
 	ListProperties(ctx context.Context, page, pageSize int) ([]domain.Property, error)
 	CreateProperty(ctx context.Context, property *domain.Property) error
+	UpdateProperty(ctx context.Context, id int64, property *domain.Property) (*domain.Property, error)
+	DeleteProperty(ctx context.Context, id int64) error
+	UploadPropertyMedia(ctx context.Context, propertyID int64, url string, mediaType string, isPrimary bool) (*domain.PropertyMedia, error)
 }
 
 // AuthService define la lógica de autenticación.

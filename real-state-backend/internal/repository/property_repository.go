@@ -76,6 +76,83 @@ func (r *propertyRepo) Create(ctx context.Context, property *domain.Property) er
 	return nil
 }
 
+func (r *propertyRepo) Update(ctx context.Context, id int64, property *domain.Property) (*domain.Property, error) {
+	query := `UPDATE properties
+			SET title = $1,
+			    description = $2,
+			    price = $3,
+			    currency = $4,
+			    address = $5,
+			    city = $6,
+			    type = $7,
+			    bedrooms = $8,
+			    bathrooms = $9,
+			    area_sqm = $10,
+			    main_image = $11,
+			    updated_at = CURRENT_TIMESTAMP
+			WHERE id = $12
+			RETURNING id, title, description, price, currency, address, city, type,
+			          bedrooms, bathrooms, area_sqm, main_image, created_at, updated_at`
+
+	var updated domain.Property
+	err := r.db.QueryRowContext(ctx, query,
+		property.Title,
+		property.Description,
+		property.Price,
+		property.Currency,
+		property.Address,
+		property.City,
+		property.Type,
+		property.Bedrooms,
+		property.Bathrooms,
+		property.AreaSqM,
+		property.MainImage,
+		id,
+	).Scan(
+		&updated.ID,
+		&updated.Title,
+		&updated.Description,
+		&updated.Price,
+		&updated.Currency,
+		&updated.Address,
+		&updated.City,
+		&updated.Type,
+		&updated.Bedrooms,
+		&updated.Bathrooms,
+		&updated.AreaSqM,
+		&updated.MainImage,
+		&updated.CreatedAt,
+		&updated.UpdatedAt,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, database.HandleError(ctx, err, "Update", "properties", map[string]interface{}{"id": id})
+		}
+		return nil, database.HandleError(ctx, err, "Update", "properties", map[string]interface{}{"id": id})
+	}
+
+	return &updated, nil
+}
+
+func (r *propertyRepo) Delete(ctx context.Context, id int64) error {
+	query := `DELETE FROM properties WHERE id = $1`
+
+	result, err := r.db.ExecContext(ctx, query, id)
+	if err != nil {
+		return database.HandleError(ctx, err, "Delete", "properties", map[string]interface{}{"id": id})
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return database.HandleError(ctx, err, "Delete (rows affected)", "properties", map[string]interface{}{"id": id})
+	}
+	if rowsAffected == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
+}
+
 func (r *propertyRepo) UpsertBatch(ctx context.Context, properties []domain.Property, syncBatchID string) error {
 	if len(properties) == 0 {
 		return nil
@@ -220,4 +297,45 @@ func (r *propertyRepo) GetActivePropertiesCount(ctx context.Context) (int, error
 		return 0, database.HandleError(ctx, err, "GetActivePropertiesCount", "properties", nil)
 	}
 	return count, nil
+}
+
+func (r *propertyRepo) SetMainImage(ctx context.Context, id int64, url string) error {
+	query := `UPDATE properties
+			SET main_image = $1,
+			    updated_at = CURRENT_TIMESTAMP
+			WHERE id = $2`
+
+	result, err := r.db.ExecContext(ctx, query, url, id)
+	if err != nil {
+		return database.HandleError(ctx, err, "SetMainImage", "properties", map[string]interface{}{"id": id, "url": url})
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return database.HandleError(ctx, err, "SetMainImage (rows affected)", "properties", map[string]interface{}{"id": id})
+	}
+	if rowsAffected == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
+}
+
+func (r *propertyRepo) UploadPropertyMedia(ctx context.Context, propertyID int64, url string, mediaType string, isPrimary bool) (*domain.PropertyMedia, error) {
+	if _, err := r.GetByID(ctx, propertyID); err != nil {
+		return nil, err
+	}
+
+	if isPrimary {
+		if err := r.SetMainImage(ctx, propertyID, url); err != nil {
+			return nil, err
+		}
+	}
+
+	return &domain.PropertyMedia{
+		PropertyID: propertyID,
+		URL:        url,
+		Type:       mediaType,
+		IsPrimary:  isPrimary,
+	}, nil
 }
